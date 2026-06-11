@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pt
+*.onnx
+*.pkl
+data/
+artifacts/
+.env
+*.zip
+*.docx
+*.txt
+!requirements.txt
+node_modules/
+.DS_Store
+wandb/

@@ -1,0 +1,16 @@
+# Production Configuration Settings
+extends: "base_config.yaml"
+
+graph:
+  max_nodes: 5000000
+  max_edges: 20000000
+  neo4j:
+    uri: "bolt://neo4j.production.internal:7687"
+    database: "production_transactions"
+
+training:
+  epochs: 100
+  batch_size: 1024
+  tracking:
+    use_wandb: true
+    project_name: "adversarial-fraud-detector-prod"

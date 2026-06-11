@@ -1,0 +1,16 @@
+# Development Config Overrides (Sub-sampled Data & Fast Test Cycles)
+extends: "base_config.yaml"
+
+graph:
+  max_nodes: 5000
+  max_edges: 10000
+
+training:
+  epochs: 5
+  batch_size: 32
+  tracking:
+    use_wandb: false
+
+data_generation:
+  subsample_fraction: 0.1
+  random_seed: 42

@@ -1,0 +1,61 @@
+data:
+  artifacts_dir: artifacts
+  elliptic:
+    classes_path: data/elliptic/elliptic_txs_classes.csv
+    edges_path: data/elliptic/elliptic_txs_edgelist.csv
+    features_path: data/elliptic/elliptic_txs_features.csv
+  ieee:
+    fraud_rate_target: 0.035
+    identity_path: data/ieee_cis/train_identity.csv
+    train_rows: 200000
+    transaction_path: data/ieee_cis/train_transaction.csv
+  paysim:
+    fraud_rate_target: 0.0013
+    path: data/paysim/paysim dataset.csv
+  processed_dir: data/processed
+  raw_dir: data/raw
+features:
+  gnn_node_features:
+  - TransactionAmt
+  - C1
+  - C2
+  - D1
+  ieee_categorical:
+  - ProductCD
+  - card4
+  - card6
+  - P_emaildomain
+  - R_emaildomain
+  paysim_sequence_features:
+  - amount
+  - orig_balance_diff
+  - dest_balance_diff
+  - orig_zeroed_out
+model:
+  generator:
+    feature_dim: 345
+    hidden_dim: 128
+    noise_dim: 64
+    num_layers: 2
+    sequence_length: 10
+  gnn:
+    dropout: 0.4
+    hidden_channels: 128
+    in_channels: 345
+    out_channels: 2
+project:
+  name: adversarial-transaction-disguise-detector
+  random_seed: 42
+  version: 1.0.0
+system:
+  device: cuda
+  num_workers: 4
+  onnx_opset_version: 17
+training:
+  batch_size: 64
+  decision_threshold: 0.5
+  epochs: 100
+  focal_loss_gamma: 2.0
+  fraud_weight_multiplier: 10.0
+  learning_rate_discriminator: 0.001
+  learning_rate_generator: 0.0001
