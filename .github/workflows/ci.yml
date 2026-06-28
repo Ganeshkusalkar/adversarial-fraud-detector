@@ -1,0 +1,56 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 black
+    - name: Run Black
+      run: black --check src/ api/ tests/
+    - name: Run Flake8
+      run: flake8 src/ api/ tests/ --max-line-length=100
+
+  test:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    - name: Test with pytest
+      run: |
+        pytest tests/unit/ -v --tb=short
+        pytest tests/integration/ -v --tb=short
+
+  docker-build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build docker image
+      run: docker build -t fraud-detector:${GITHUB_SHA} .
+    - name: Health Check
+      run: |
+        docker run -d -p 8000:8000 fraud-detector:${GITHUB_SHA}
+        sleep 10
+        curl -f http://localhost:8000/health || exit 1

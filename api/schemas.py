@@ -2,9 +2,9 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 
 class TransactionInput(BaseModel):
-    TransactionID: int = Field(..., description="Unique transaction identity token identifier.")
+    TransactionID: str = Field(..., description="Unique transaction identity token identifier.")
     card1: int = Field(..., description="Unique card or user account account identifier token.")
-    TransactionAmt: float = Field(..., description="Transaction amount value in regional currency.", gt=0.0)
+    TransactionAmt: float = Field(..., description="Transaction amount value in regional currency.", ge=0.0)
     TransactionDT: int = Field(..., description="Time delta delta-offset tracker timestamp in seconds.")
     ProductCD: str = Field(..., description="Product category categorical variable type indicator code mapping.")
     card4: str = Field(..., description="Card network brand marker identification label.")
@@ -24,7 +24,7 @@ class TransactionInput(BaseModel):
     )
 
 class FraudPredictionResponse(BaseModel):
-    transaction_id: int
+    transaction_id: str
     fraud_score: float = Field(..., description="Continuous probability matrix confidence mapping (0.0 to 1.0).")
     is_fraudulent: bool = Field(..., description="Crisp operational transaction routing execution decision binary classification.")
     processing_latency_ms: float = Field(..., description="Internal system server inference latency tracking performance benchmark.")

@@ -8,27 +8,19 @@ services:
     image: neo4j:5.12.0
     container_name: adversarial_neo4j
     ports:
-      - "7474:7474"
-      - "7687:7687"
+      - "7474:7474" # Cypher Browser HTTP
+      - "7687:7687" # Bolt Protocol
     volumes:
       - neo4j_data:/data
       - neo4j_logs:/logs
-    env_file:
-      - .env
     environment:
-      - NEO4J_AUTH=${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-password}
+      - NEO4J_AUTH=neo4j/password
       - NEO4J_PLUGINS=["apoc"]
     healthcheck:
-      test: ["CMD", "cypher-shell", "-u", "${NEO4J_USER:-neo4j}", "-p", "${NEO4J_PASSWORD:-password}", "RETURN 1"]
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "password", "RETURN 1"]
       interval: 10s
       timeout: 5s
       retries: 5
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 2G
 
   # --------------------------------------------------------
   # FastAPI High-Throughput Serving Gateway
@@ -40,12 +32,13 @@ services:
     container_name: adversarial_api
     ports:
       - "8000:8000"
-    env_file:
-      - .env
+    environment:
+      - API_PORT=8000
+      - NEO4J_URI=bolt://neo4j:7687
     depends_on:
       neo4j:
         condition: service_healthy
-    restart: unless-stopped
+    command: ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
     deploy:
       resources:
         limits:
@@ -53,44 +46,48 @@ services:
           memory: 2G
 
   # --------------------------------------------------------
-  # Prometheus Metrics
+  # Streamlit Real-Time Visual Dashboard
   # --------------------------------------------------------
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: adversarial_prometheus
-    volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus_data:/prometheus
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: adversarial_dashboard
     ports:
-      - "9090:9090"
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 1G
+      - "8501:8501"
+    environment:
+      - API_ENDPOINT=http://api_gateway:8000
+    depends_on:
+      - api_gateway
+    command: ["streamlit", "run", "dashboard/app.py", "--server.port=8501", "--server.address=0.0.0.0"]
 
   # --------------------------------------------------------
-  # Grafana Dashboard
+  # Prometheus Metrics Monitoring
+  # --------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: adversarial_prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    depends_on:
+      - api_gateway
+
+  # --------------------------------------------------------
+  # Grafana Dashboard Visualization
   # --------------------------------------------------------
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:10.1.5
     container_name: adversarial_grafana
     ports:
       - "3000:3000"
-    volumes:
-      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=fraudapp123
     depends_on:
       - prometheus
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 1G
 
 volumes:
   neo4j_data:
   neo4j_logs:
-  prometheus_data:
-  grafana_data:

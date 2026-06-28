@@ -1,16 +1,35 @@
+# Virtual environment
+venv/
+.venv/
+env/
+ENV/
+
+# Python caching
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Dataset files (avoid pushing gigabytes of Kaggle data to GitHub)
+data/
+*.csv
+*.xlsx
+
+# Local environment configs and secrets
+.env
+config/*_config.yaml
+!config/base_config.yaml
+
+# IDE settings
+.vscode/
+.idea/
+
+# Large model artifacts (checkpoints)
+artifacts/checkpoints/
 *.pt
+*.pth
 *.onnx
 *.pkl
-data/
-artifacts/
-.env
-*.zip
-*.docx
-*.txt
-!requirements.txt
-node_modules/
-.DS_Store
-wandb/

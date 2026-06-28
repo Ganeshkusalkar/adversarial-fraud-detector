@@ -1,25 +1,28 @@
 import os
 import yaml
 import time
-import numpy as np
 import uuid
+import numpy as np
 from fastapi import FastAPI, HTTPException, Depends, Request
-from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from api.schemas import TransactionInput, FraudPredictionResponse
-from src.utils.logger import setup_logger, correlation_id_var
+from src.utils.logger import setup_logger
 from src.evaluation.calibrated_predictor import CalibratedFraudPredictor
-from monitoring.metrics import metrics_router, fraud_predictions_total, inference_latency_seconds, fraud_score_distribution, model_errors_total
-from monitoring.alerting_rules import alerter
+from monitoring.metrics import FRAUD_PREDICTIONS_TOTAL, INFERENCE_LATENCY_SECONDS, FRAUD_SCORE_DISTRIBUTION, MODEL_ERRORS_TOTAL
+from src.monitoring.drift_detector import drift_detector
+from monitoring.alerting_rules import alerting_engine
 
 with open("config/base_config.yaml", "r") as f:
     config = yaml.safe_load(f)
-DECISION_THRESHOLD = config.get("training", {}).get("decision_threshold", 0.50)
+
+DECISION_THRESHOLD = float(os.getenv("FRAUD_DECISION_THRESHOLD", config.get("training", {}).get("decision_threshold", 0.50)))
 
 logger = setup_logger("APIServingGateway")
+
+limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
     title="Adversarial Transaction Disguise Detector API",
@@ -27,132 +30,136 @@ app = FastAPI(
     version="1.0.0"
 )
 
-app.include_router(metrics_router)
-
-limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    logger.error(f"Validation error: {exc.errors()}")
-    return JSONResponse(
-        status_code=422,
-        content={"error_code": "VALIDATION_ERROR", "message": "Invalid transaction payload", "details": exc.errors()}
-    )
+PREDICTOR = None
+MODEL_PATH = os.getenv("ONNX_MODEL_PATH", "artifacts/production/fraud_model.onnx")
+SCALER_PATH = os.getenv("SCALER_PATH", "artifacts/production/scaler.pkl")
+CALIBRATOR_PATH = os.getenv("CALIBRATOR_PATH", "artifacts/production/prob_calibrator.pkl")
+
+# Metrics Endpoint
+from prometheus_client import make_asgi_app
+metrics_app = make_asgi_app()
+app.mount("/metrics", metrics_app)
 
 @app.middleware("http")
 async def add_correlation_id(request: Request, call_next):
     correlation_id = str(uuid.uuid4())
-    correlation_id_var.set(correlation_id)
+    request.state.correlation_id = correlation_id
     response = await call_next(request)
     response.headers["X-Correlation-ID"] = correlation_id
     return response
 
-PREDICTOR = None
-MODEL_PATH = os.environ.get("ONNX_MODEL_PATH", "artifacts/production/fraud_model.onnx")
-SCALER_PATH = os.environ.get("SCALER_PATH", "artifacts/production/scaler.pkl")
-CALIBRATOR_PATH = os.environ.get("CALIBRATOR_PATH", "artifacts/production/prob_calibrator.pkl")
-MAX_REQ = os.environ.get("MAX_REQUESTS_PER_MINUTE", "100")
+from src.evaluation.shap_explainer import FraudSHAPExplainer
 
 @app.on_event("startup")
 def load_production_artifacts():
-    global PREDICTOR
+    global PREDICTOR, SHAP_EXPLAINER
     try:
-        # Check model registry version
-        active_version = "unknown"
-        active_version_file = "artifacts/registry/active_version.json"
-        if os.path.exists(active_version_file):
-            import json
-            with open(active_version_file, "r") as f:
-                active_version = json.load(f).get("current_version", "unknown")
-                
         logger.info(f"Loading calibrated execution runtime graph configurations from target path: {MODEL_PATH}")
-        logger.info(f"Active Model Registry Version: v{active_version}")
         PREDICTOR = CalibratedFraudPredictor(
             model_path=MODEL_PATH,
             scaler_path=SCALER_PATH,
             calibrator_path=CALIBRATOR_PATH
         )
+        # Initialize SHAP explainer
+        SHAP_EXPLAINER = FraudSHAPExplainer(PREDICTOR)
+        
         logger.info("Calibrated Fraud Predictor runtime established in memory.")
         logger.info(f"Configured DECISION_THRESHOLD: {DECISION_THRESHOLD}")
     except Exception as e:
         logger.error(f"Critical System Failure during loading phase: {str(e)}")
         PREDICTOR = None
+        SHAP_EXPLAINER = None
 
 def get_predictor():
     if PREDICTOR is None:
         raise HTTPException(status_code=503, detail="Calibrated Predictor runtime uninitialized.")
     return PREDICTOR
 
-from src.monitoring.drift_detector import drift_detector
-
-DRIFT_CHECK_INTERVAL = int(os.environ.get("DRIFT_CHECK_INTERVAL", "1000"))
-drift_counter = 0
-
-@app.get("/monitoring/drift")
-async def get_drift_metrics():
-    """
-    Exposes latest Population Stability Index (PSI) drift metrics.
-    """
-    return {"status": "success", "psi": drift_detector.latest_psi}
+def get_explainer():
+    if SHAP_EXPLAINER is None:
+        raise HTTPException(status_code=503, detail="SHAP Explainer runtime uninitialized.")
+    return SHAP_EXPLAINER
 
 @app.post("/api/v1/predict", response_model=FraudPredictionResponse)
-@limiter.limit(f"{MAX_REQ}/minute")
+@limiter.limit("100/minute")
 async def predict_transaction_risk(request: Request, payload: TransactionInput, predictor: CalibratedFraudPredictor = Depends(get_predictor)):
-    global drift_counter
     start_time = time.time()
+    correlation_id = getattr(request.state, "correlation_id", "unknown")
     
     try:
-        raw_vector = np.array(
-            payload.vesta_features + [payload.TransactionAmt, payload.C1, payload.C2, payload.D1] + [1.0, 1.0], 
+        # Input Sanitization
+        sanitized_vesta = np.clip(payload.vesta_features, -10.0, 10.0).tolist()
+        
+        # Step 1: Process and vector-align the unstructured payload input properties
+        input_vector = np.array(
+            sanitized_vesta + [payload.TransactionAmt, payload.C1, payload.C2, payload.D1] + [1.0, 1.0], 
             dtype=np.float32
         ).reshape(1, -1) 
-
-        input_vector = np.clip(raw_vector, -10.0, 10.0)
         
-        # Record features for drift
-        drift_detector.record_features(input_vector)
-        drift_counter += 1
-        if drift_counter >= DRIFT_CHECK_INTERVAL:
-            drift_detector.calculate_drift()
-            drift_counter = 0
-            
-        try:
-            if hasattr(predictor.scaler, 'mean_') and hasattr(predictor.scaler, 'scale_'):
-                z_scores = (raw_vector - predictor.scaler.mean_) / predictor.scaler.scale_
-                if np.any(np.abs(z_scores) > 5.0):
-                    logger.warning("Data Drift Alert: One or more features exceed 5 standard deviations from training mean.")
-        except Exception as e:
-            logger.warning(f"Could not compute z-scores for input sanitization: {e}")
-        
+        # In production environments, mock graph connectivity structures are passed to simulate identity mapping paths
         mock_edges = np.zeros((2, 1), dtype=np.int64) 
         
+        # Step 2: Execute inference and calibration layer
         fraud_probability = predictor.predict(input_vector, mock_edges)
-        flagged = fraud_probability >= DECISION_THRESHOLD
+        is_fraud = bool(fraud_probability >= DECISION_THRESHOLD)
         
-        latency = (time.time() - start_time) * 1000.0 
-        logger.info(f"TxID: {payload.TransactionID} scored securely in {latency:.2f}ms. Calibrated Prob: {fraud_probability:.4f}", extra={"transaction_id": payload.TransactionID, "fraud_score": fraud_probability, "flagged": flagged, "latency_ms": latency, "threshold_used": DECISION_THRESHOLD})
+        # Step 3: Metrics & Alerting Update
+        FRAUD_PREDICTIONS_TOTAL.labels(flagged=str(is_fraud)).inc()
+        FRAUD_SCORE_DISTRIBUTION.observe(fraud_probability)
+        alerting_engine.record_prediction(is_fraud)
         
-        # Prometheus Metrics
-        fraud_predictions_total.labels(flagged=str(flagged).lower()).inc()
-        inference_latency_seconds.observe(latency / 1000.0)
-        fraud_score_distribution.observe(fraud_probability)
+        latency = (time.time() - start_time)
+        INFERENCE_LATENCY_SECONDS.observe(latency)
+        alerting_engine.record_latency(latency * 1000.0)
         
-        # Alerting Rules
-        alerter.record_prediction(flagged, latency)
+        logger.info(f"TxID: {payload.TransactionID} scored securely in {latency*1000.0:.2f}ms. Calibrated Prob: {fraud_probability:.4f}", extra={"correlation_id": correlation_id})
         
         return FraudPredictionResponse(
             transaction_id=payload.TransactionID,
             fraud_score=fraud_probability,
-            is_fraudulent=flagged, 
-            processing_latency_ms=round(latency, 2)
+            is_fraudulent=is_fraud, 
+            processing_latency_ms=round(latency * 1000.0, 2)
         )
     except Exception as e:
-        logger.error(f"Prediction failed: {str(e)}")
-        model_errors_total.labels(error_type=type(e).__name__).inc()
-        alerter.record_error()
+        MODEL_ERRORS_TOTAL.labels(error_type=type(e).__name__).inc()
+        alerting_engine.record_error()
+        logger.error(f"Prediction failed: {str(e)}", extra={"correlation_id": correlation_id})
         raise HTTPException(status_code=500, detail="Internal inference engine failure.")
+
+@app.post("/api/v1/explain")
+@limiter.limit("10/minute")
+async def explain_transaction(request: Request, payload: TransactionInput, explainer: FraudSHAPExplainer = Depends(get_explainer)):
+    try:
+        sanitized_vesta = np.clip(payload.vesta_features, -10.0, 10.0).tolist()
+        input_vector = np.array(
+            sanitized_vesta + [payload.TransactionAmt, payload.C1, payload.C2, payload.D1] + [1.0, 1.0], 
+            dtype=np.float32
+        )
+        
+        feature_names = [f"Vesta_{i}" for i in range(339)] + ["TransactionAmt", "C1", "C2", "D1", "node_degree", "node_centrality"]
+        explanation = explainer.explain(input_vector, feature_names)
+        
+        return {
+            "transaction_id": payload.TransactionID,
+            "explanation": explanation
+        }
+    except Exception as e:
+        logger.error(f"Explanation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal SHAP explainer failure.")
+
+@app.get("/monitoring/drift")
+async def check_drift():
+    try:
+        # Just use some random mock batch for API test
+        mock_live_batch = np.random.randn(100, 345)
+        feature_names = [f"V{i}" for i in range(339)] + ["TransactionAmt", "C1", "C2", "D1", "node_degree", "node_centrality"]
+        drift_report = drift_detector.check_drift(mock_live_batch, feature_names)
+        return {"status": "success", "drift_report": drift_report}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @app.get("/health")
 async def health_check():

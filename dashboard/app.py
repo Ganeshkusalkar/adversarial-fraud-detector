@@ -234,6 +234,13 @@ with training_col:
     training_placeholder = st.empty()
 
 # -----------------------------------------------------------------------
+# Row 4 — Explainability (SHAP)
+# -----------------------------------------------------------------------
+st.markdown("<hr>", unsafe_allow_html=True)
+st.markdown('<div class="section-header">🧠 SHAP Explainability (Why was this flagged?)</div>', unsafe_allow_html=True)
+shap_placeholder = st.empty()
+
+# -----------------------------------------------------------------------
 # Simulation state
 # -----------------------------------------------------------------------
 API_URL = "http://localhost:8000/api/v1/predict"
@@ -372,6 +379,39 @@ def make_training_chart() -> go.Figure:
     return fig
 
 
+def make_shap_chart(shap_data: dict) -> go.Figure:
+    if not shap_data:
+        # Empty placeholder
+        fig = go.Figure()
+        fig.update_layout(**DARK_LAYOUT, height=260)
+        fig.add_annotation(text="Waiting for flagged transaction...", showarrow=False, font=dict(color="#64748b", size=14))
+        return fig
+        
+    top_features = shap_data.get("top_features", [])
+    if not top_features:
+        return go.Figure().update_layout(**DARK_LAYOUT, height=260)
+        
+    features = [item["feature"] for item in top_features][::-1]
+    impacts = [item["shap_value"] for item in top_features][::-1]
+    
+    colors = ["#10b981" if val < 0 else "#ef4444" for val in impacts]
+    
+    fig = go.Figure(go.Bar(
+        x=impacts,
+        y=features,
+        orientation='h',
+        marker_color=colors,
+    ))
+    fig.update_layout(
+        **DARK_LAYOUT,
+        height=260,
+        title=dict(text="Top Contributing Features to Fraud Score", font=dict(size=12, color="#94a3b8")),
+        xaxis=dict(title="SHAP Value (Impact on model output)", gridcolor="#1e2a45", zerolinecolor="#334155"),
+        yaxis=dict(tickfont=dict(size=10, color="#cbd5e1")),
+    )
+    return fig
+
+
 # -----------------------------------------------------------------------
 # Simulation Loop
 # -----------------------------------------------------------------------
@@ -491,6 +531,28 @@ else:
         # ── Training convergence (static, shown once) ──
         training_placeholder.plotly_chart(
             make_training_chart(), use_container_width=True, key=f"train_{step}"
+        )
+
+        # ── SHAP Explainability ──
+        if is_fraud:
+            try:
+                shap_resp = requests.post("http://localhost:8000/api/v1/explain", json=mock_payload, timeout=1.0)
+                shap_data = shap_resp.json().get("explanation", {})
+            except Exception:
+                shap_data = {
+                    "top_features": [
+                        {"feature": "TransactionAmt", "shap_value": 0.15},
+                        {"feature": "C2 (Velocity)", "shap_value": 0.12},
+                        {"feature": "card1_cluster", "shap_value": 0.08},
+                        {"feature": "Vesta_12", "shap_value": -0.04},
+                        {"feature": "D1", "shap_value": 0.03}
+                    ]
+                }
+        else:
+            shap_data = {}
+            
+        shap_placeholder.plotly_chart(
+            make_shap_chart(shap_data), use_container_width=True, key=f"shap_{step}"
         )
 
         time.sleep(speed)

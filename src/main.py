@@ -77,25 +77,6 @@ def train_ieee(config):
     with open(SCALER_PATH, "wb") as f:
         pickle.dump(scaler, f)
 
-    # NEW: Generate reference stats for Data Drift Detection
-    try:
-        import json
-        reference_stats = {}
-        # Track up to top 20 features for PSI drift
-        for i in range(min(20, x_scaled.shape[1])): 
-            feature_vals = x_scaled[:, i]
-            hist, bin_edges = np.histogram(feature_vals, bins=10)
-            reference_stats[str(i)] = {
-                "bins": bin_edges.tolist(),
-                "proportions": (hist / len(feature_vals)).tolist()
-            }
-        os.makedirs(os.path.dirname(SCALER_PATH), exist_ok=True)
-        with open(os.path.join(os.path.dirname(SCALER_PATH), "reference_stats.json"), "w") as f:
-            json.dump(reference_stats, f, indent=4)
-        logger.info(f"[OK] Exported reference_stats.json for Data Drift Detection.")
-    except Exception as e:
-        logger.error(f"Failed to generate reference stats: {e}")
-
     y_np = graph_data.y.numpy()
     n_positive = int(y_np.sum())
     n_negative = int(len(y_np) - n_positive)
