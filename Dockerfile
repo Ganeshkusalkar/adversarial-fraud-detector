@@ -7,7 +7,6 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    execstack \
     && rm -rf /var/lib/apt/lists/*
 
 # Create and activate virtual environment
@@ -18,9 +17,6 @@ COPY requirements.txt .
 
 # Install dependencies into virtualenv
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Clear the executable stack flag from onnxruntime shared libraries to prevent security policy crashes
-RUN execstack -c /opt/venv/lib/python3.10/site-packages/onnxruntime/capi/*.so
 
 # ==========================================================
 # STAGE 2: Lightweight Runtime Execution Environment
