@@ -51,8 +51,27 @@ jobs:
     - uses: actions/checkout@v3
     - name: Build docker image
       run: docker build -t fraud-detector:${GITHUB_SHA} .
-    - name: Health Check
+    - name: Health Check (with retries & diagnostics)
       run: |
+        set -o pipefail
         docker run -d --name fraud-api -p 8000:8000 fraud-detector:${GITHUB_SHA}
-        sleep 10
-        curl -f http://localhost:8000/health || (docker logs fraud-api && exit 1)
+        CONTAINER=$(docker ps -q -l)
+        echo "Started container: $CONTAINER"
+
+        # Poll the health endpoint for up to 60s (12 x 5s)
+        for i in $(seq 1 12); do
+          if curl -sSf http://localhost:8000/health > /dev/null 2>&1; then
+            echo "Health check passed"
+            exit 0
+          else
+            echo "Waiting for app to be ready... (attempt $i/12)"
+            sleep 5
+          fi
+        done
+
+        echo "Health check failed after retries — printing container logs and exiting with failure"
+        echo "==== CONTAINER LOGS ===="
+        docker logs fraud-api || true
+        echo "==== END CONTAINER LOGS ===="
+        docker ps -a
+        exit 1
