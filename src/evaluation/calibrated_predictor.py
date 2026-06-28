@@ -32,6 +32,14 @@ class CalibratedFraudPredictor:
         with open(self.scaler_path, "rb") as f:
             self.scaler = pickle.load(f)
 
+        # Patch __main__ for unpickling the calibrator
+        import sys
+        from src.evaluation.calibrate_probabilities import PlattCalibrator, IsoCalibrator
+        if not hasattr(sys.modules["__main__"], "PlattCalibrator"):
+            setattr(sys.modules["__main__"], "PlattCalibrator", PlattCalibrator)
+        if not hasattr(sys.modules["__main__"], "IsoCalibrator"):
+            setattr(sys.modules["__main__"], "IsoCalibrator", IsoCalibrator)
+
         # Load Calibrator
         with open(self.calibrator_path, "rb") as f:
             self.calibrator = pickle.load(f)
