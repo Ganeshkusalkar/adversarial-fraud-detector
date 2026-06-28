@@ -53,6 +53,6 @@ jobs:
       run: docker build -t fraud-detector:${GITHUB_SHA} .
     - name: Health Check
       run: |
-        docker run -d -p 8000:8000 fraud-detector:${GITHUB_SHA}
+        docker run -d --name fraud-api -p 8000:8000 fraud-detector:${GITHUB_SHA}
         sleep 10
-        curl -f http://localhost:8000/health || exit 1
+        curl -f http://localhost:8000/health || (docker logs fraud-api && exit 1)

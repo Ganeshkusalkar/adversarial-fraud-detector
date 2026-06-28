@@ -28,13 +28,13 @@ WORKDIR /app
 # Install curl for HEALTHCHECK
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
-# Copy virtualenv from builder
-COPY --from=builder /opt/venv /opt/venv
-COPY . .
-
-# Create non-root user
+# Create non-root user first
 RUN groupadd -r fraudapp && useradd -r -g fraudapp fraudapp
 RUN chown -R fraudapp:fraudapp /app
+
+# Copy virtualenv and code from builder with correct ownership
+COPY --from=builder --chown=fraudapp:fraudapp /opt/venv /opt/venv
+COPY --chown=fraudapp:fraudapp . .
 
 # Switch to non-root user
 USER fraudapp
