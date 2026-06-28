@@ -24,6 +24,7 @@ DECISION_THRESHOLD = float(os.environ.get("FRAUD_DECISION_THRESHOLD", "0.38"))
 _SCALER_PATH = os.environ.get("SCALER_PATH", "artifacts/production/scaler.pkl")
 _scaler = None  # Lazy-loaded on first request
 
+
 def _load_scaler():
     """Loads the fitted StandardScaler from the artifact store."""
     global _scaler

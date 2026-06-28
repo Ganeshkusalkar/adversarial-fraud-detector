@@ -68,7 +68,9 @@ class EllipticPipeline(BaseDataLoader):
 
         # Build txId -> sequential index mapping from the feature node set
         node_ids = features_df.iloc[:, 0].values
-        node_map: Dict[int, int] = {int(tx_id): idx for idx, tx_id in enumerate(node_ids)}
+        node_map: Dict[int, int] = {
+            int(tx_id): idx for idx, tx_id in enumerate(node_ids)
+        }
 
         # Remap edge endpoints to sequential integer indices
         edges_df = edges_df.copy()
@@ -126,11 +128,15 @@ class EllipticPipeline(BaseDataLoader):
         val_cutoff = unique_times[int(n_times * 0.85)]
 
         labeled_mask = y != -1
-        data.train_mask = labeled_mask & torch.tensor(timesteps <= train_cutoff, dtype=torch.bool)
+        data.train_mask = labeled_mask & torch.tensor(
+            timesteps <= train_cutoff, dtype=torch.bool
+        )
         data.val_mask = labeled_mask & torch.tensor(
             (timesteps > train_cutoff) & (timesteps <= val_cutoff), dtype=torch.bool
         )
-        data.test_mask = labeled_mask & torch.tensor(timesteps > val_cutoff, dtype=torch.bool)
+        data.test_mask = labeled_mask & torch.tensor(
+            timesteps > val_cutoff, dtype=torch.bool
+        )
 
         logger.info(
             f"Elliptic graph built — Nodes: {data.num_nodes} | Edges: {data.num_edges} | "

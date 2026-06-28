@@ -43,7 +43,9 @@ class IEEECISPipeline(BaseDataLoader):
     # ------------------------------------------------------------------
     # STAGE 2: Preprocessing
     # ------------------------------------------------------------------
-    def preprocess(self, data: Tuple[pd.DataFrame, pd.DataFrame], fit: bool = True) -> pd.DataFrame:
+    def preprocess(
+        self, data: Tuple[pd.DataFrame, pd.DataFrame], fit: bool = True
+    ) -> pd.DataFrame:
         """
         Merges transaction and identity tables, engineers missingness
         indicators for sparse V-features, and encodes categorical columns.
@@ -65,7 +67,9 @@ class IEEECISPipeline(BaseDataLoader):
         df = df.copy()
 
         # --- V-feature Imputation + Missingness Indicators ---
-        logger.info("Imputing sparse V-features and building missingness indicator flags...")
+        logger.info(
+            "Imputing sparse V-features and building missingness indicator flags..."
+        )
         v_cols = [c for c in df.columns if c.startswith("V")]
         indicator_dict: Dict[str, pd.Series] = {}
 
@@ -102,13 +106,15 @@ class IEEECISPipeline(BaseDataLoader):
                     if col in self.label_encoders:
                         le = self.label_encoders[col]
                         # Handle unseen labels gracefully during transform
-                        df[col] = df[col].map(lambda s: s if s in le.classes_ else "UNKNOWN")
+                        df[col] = df[col].map(
+                            lambda s: s if s in le.classes_ else "UNKNOWN"
+                        )
                         # Add "UNKNOWN" to classes if it wasn't there to avoid transform error, or just transform
                         if "UNKNOWN" not in le.classes_:
                             le.classes_ = np.append(le.classes_, "UNKNOWN")
                         df[col] = le.transform(df[col])
                     else:
-                        df[col] = 0 # Fallback
+                        df[col] = 0  # Fallback
 
         # --- Global Numeric Imputation ---
         # Fill any remaining NaNs in numeric columns with their column median
@@ -135,14 +141,16 @@ class IEEECISPipeline(BaseDataLoader):
 
         # Feature 1: Expanding cumulative transaction count per card entity
         # Captures velocity surges — rapid-fire transactions flag structural fraud
-        new_features["card1_count_cumulative"] = df.groupby("card1")["TransactionDT"].transform(
-            lambda x: x.expanding().count().shift(1).fillna(0)
-        )
+        new_features["card1_count_cumulative"] = df.groupby("card1")[
+            "TransactionDT"
+        ].transform(lambda x: x.expanding().count().shift(1).fillna(0))
 
         # Feature 2: Transaction amount relative to the card's historical mean spend
         # Sudden large deviations from typical spend patterns are strong fraud signals
         card_mean_amt = df.groupby("card1")["TransactionAmt"].transform("mean")
-        new_features["amount_to_mean_ratio"] = df["TransactionAmt"] / (card_mean_amt + 1e-5)
+        new_features["amount_to_mean_ratio"] = df["TransactionAmt"] / (
+            card_mean_amt + 1e-5
+        )
 
         # Attach all engineered features in one consolidated concat operation
         engineered_df = pd.DataFrame(new_features, index=df.index)
@@ -160,5 +168,6 @@ class IEEECISPipeline(BaseDataLoader):
         preprocessed_df = self.preprocess(raw_data, fit=fit)
         final_featured_df = self.extract_features(preprocessed_df)
         return final_featured_df
+
 
 # Bugfix: resolved temporal look-ahead bias in card velocity features

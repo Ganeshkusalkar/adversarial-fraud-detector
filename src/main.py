@@ -1,7 +1,7 @@
 """
 src/main.py
 ===========
-Central pipeline entry point for training and evaluating the 
+Central pipeline entry point for training and evaluating the
 Adversarial Transaction Disguise Detector model across multiple datasets.
 """
 
@@ -82,7 +82,7 @@ def train_ieee(config):
     n_negative = int(len(y_np) - n_positive)
     if n_positive == 0:
         n_positive = max(1, int(n_negative * 0.035))
-        
+
     # NEW: Compute per-node sample weights for WeightedRandomSampler
     node_weights = np.ones(len(y_np))
     # Legitimate nodes get 1.0, fraud nodes get (n_negative / n_positive)
@@ -152,7 +152,9 @@ def train_paysim(config):
         pipeline = PaySimPipeline(config)
         sequences = pipeline.run_pipeline()
         logger.info(f"Successfully processed {len(sequences)} PaySim sequences.")
-        logger.info("Note: Sequence training logic for LSTM integration would run here.")
+        logger.info(
+            "Note: Sequence training logic for LSTM integration would run here."
+        )
     except Exception as e:
         logger.error(f"PaySim pipeline failed (missing data?): {e}")
 
@@ -164,7 +166,9 @@ def train_elliptic(config):
     try:
         pipeline = EllipticPipeline(config)
         graph_data = pipeline.run_pipeline()
-        logger.info(f"Successfully built Elliptic graph: {graph_data.num_nodes} nodes, {graph_data.num_edges} edges.")
+        logger.info(
+            f"Successfully built Elliptic graph: {graph_data.num_nodes} nodes, {graph_data.num_edges} edges."
+        )
         logger.info("Note: Elliptic graph training loop would run here.")
     except Exception as e:
         logger.error(f"Elliptic pipeline failed (missing data?): {e}")
@@ -185,10 +189,12 @@ def evaluate_ieee(config):
         print(f"  EVALUATING: {name}")
         print(f"{'='*60}")
         pipeline = IEEECISPipeline(config)
-        
+
         def load_raw_subset():
             if skiprows > 0:
-                df_txn = pd.read_csv(tx_path, skiprows=range(1, skiprows+1), nrows=nrows)
+                df_txn = pd.read_csv(
+                    tx_path, skiprows=range(1, skiprows + 1), nrows=nrows
+                )
             else:
                 df_txn = pd.read_csv(tx_path, nrows=nrows)
             df_id = pd.read_csv(id_path)
@@ -197,7 +203,7 @@ def evaluate_ieee(config):
         pipeline.load_raw = load_raw_subset
         with open(ENCODERS_PATH, "rb") as f:
             pipeline.label_encoders = pickle.load(f)
-            
+
         processed_df = pipeline.run_pipeline(fit=False)
         builder = TransactionGraphBuilder(config)
         graph_data = builder.build_inductive_graph(processed_df)
@@ -212,7 +218,7 @@ def evaluate_ieee(config):
         session = ort.InferenceSession(ONNX_PATH, sess_options=sess_options)
 
         input_name = session.get_inputs()[0].name
-        edge_name  = session.get_inputs()[1].name
+        edge_name = session.get_inputs()[1].name
 
         n_nodes = len(y_true)
         fraud_probs = []
@@ -254,7 +260,7 @@ def evaluate_ieee(config):
 
     # Evaluate Train (In-Sample)
     evaluate_subset("TRAINING SET (In-Sample)", 0, train_rows)
-    
+
     # Evaluate Test (Out-of-Sample)
     # The user asked for "rows 100,001 to 150,000", which corresponds to skiprows=100000, nrows=50000
     evaluate_subset("TESTING SET (Out-of-Sample)", 100000, 50000)
@@ -262,9 +268,16 @@ def evaluate_ieee(config):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Adversarial Fraud Detector Pipeline")
-    parser.add_argument("action", choices=["train", "evaluate"], help="Action to perform")
-    parser.add_argument("--dataset", choices=["ieee", "paysim", "elliptic", "all"], default="ieee", help="Target dataset")
-    
+    parser.add_argument(
+        "action", choices=["train", "evaluate"], help="Action to perform"
+    )
+    parser.add_argument(
+        "--dataset",
+        choices=["ieee", "paysim", "elliptic", "all"],
+        default="ieee",
+        help="Target dataset",
+    )
+
     args = parser.parse_args()
     config = load_config()
 
@@ -275,9 +288,11 @@ if __name__ == "__main__":
             train_paysim(config)
         if args.dataset in ["elliptic", "all"]:
             train_elliptic(config)
-            
+
     elif args.action == "evaluate":
         if args.dataset in ["ieee", "all"]:
             evaluate_ieee(config)
         if args.dataset in ["paysim", "elliptic"]:
-            logger.warning(f"Evaluation for {args.dataset} is not fully integrated. Please evaluate IEEE-CIS.")
+            logger.warning(
+                f"Evaluation for {args.dataset} is not fully integrated. Please evaluate IEEE-CIS."
+            )

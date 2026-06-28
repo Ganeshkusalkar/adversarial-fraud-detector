@@ -41,7 +41,14 @@ class PaySimPipeline(BaseDataLoader):
         balance consistency audit signals used as fraud discriminators.
         """
         # Input validation — ensure all required feature columns will exist after engineering
-        required_raw = {"amount", "newbalanceOrig", "oldbalanceOrig", "newbalanceDest", "oldbalanceDest", "isFraud"}
+        required_raw = {
+            "amount",
+            "newbalanceOrig",
+            "oldbalanceOrig",
+            "newbalanceDest",
+            "oldbalanceDest",
+            "isFraud",
+        }
         missing = required_raw - set(df.columns)
         if missing:
             raise ValueError(
@@ -49,7 +56,9 @@ class PaySimPipeline(BaseDataLoader):
                 "Ensure you are loading the correct PaySim CSV file."
             )
 
-        logger.info("Filtering to TRANSFER and CASH_OUT types (fraud-exclusive channels)...")
+        logger.info(
+            "Filtering to TRANSFER and CASH_OUT types (fraud-exclusive channels)..."
+        )
         # Optimization: PaySim fraud is strictly confined to these two transaction types
         df = df[df["type"].isin(["TRANSFER", "CASH_OUT"])].copy()
         df = df.sort_values("step").reset_index(drop=True)

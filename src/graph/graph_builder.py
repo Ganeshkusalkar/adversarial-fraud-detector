@@ -41,20 +41,30 @@ class TransactionGraphBuilder:
         Returns:
             PyTorch Geometric Data object ready for GNN training.
         """
-        logger.info("Initializing inductive graph construction from tabular transactions...")
+        logger.info(
+            "Initializing inductive graph construction from tabular transactions..."
+        )
 
         # ----------------------------------------------------------------
         # 1. Build Node Feature Matrix
         # ----------------------------------------------------------------
         # Dynamically resolve available V-features (may vary by subset size)
-        v_features = sorted([c for c in df.columns if c.startswith("V") and not c.endswith("_is_missing")])
+        v_features = sorted(
+            [
+                c
+                for c in df.columns
+                if c.startswith("V") and not c.endswith("_is_missing")
+            ]
+        )
         engineered_cols = ["card1_count_cumulative", "amount_to_mean_ratio"]
         all_feature_cols = v_features + self.node_feature_cols + engineered_cols
 
         # Keep only columns that actually exist in the current DataFrame
         all_feature_cols = [c for c in all_feature_cols if c in df.columns]
 
-        logger.info(f"Aggregating {len(all_feature_cols)} features per card node via mean pooling...")
+        logger.info(
+            f"Aggregating {len(all_feature_cols)} features per card node via mean pooling..."
+        )
 
         # Map card entities to sequential integer node indices
         unique_cards = df["card1"].unique()
@@ -62,7 +72,9 @@ class TransactionGraphBuilder:
 
         # Aggregate node features per card (mean over all transactions per card)
         # Using reindex(unique_cards) preserves the same ordering as card_to_idx
-        node_features_df = df.groupby("card1")[all_feature_cols].mean().reindex(unique_cards)
+        node_features_df = (
+            df.groupby("card1")[all_feature_cols].mean().reindex(unique_cards)
+        )
 
         # Node label: a card node is fraudulent if ANY of its transactions was fraud
         node_labels_df = df.groupby("card1")["isFraud"].max().reindex(unique_cards)
@@ -91,7 +103,9 @@ class TransactionGraphBuilder:
         # Two cards sharing the same email domain or address likely belong to
         # the same fraud ring — linking them propagates risk signals across
         # structurally related accounts for richer GNN message passing.
-        logger.info("Building cross-card risk propagation edges (email/address sharing)...")
+        logger.info(
+            "Building cross-card risk propagation edges (email/address sharing)..."
+        )
         cross_edges = []
 
         for link_col in ["P_emaildomain", "addr1"]:
@@ -133,7 +147,9 @@ class TransactionGraphBuilder:
                 "No edges constructed — falling back to self-loop identity edges. "
                 "This typically means the DataFrame subset has only single-transaction cards."
             )
-            edge_index = torch.arange(x.size(0), dtype=torch.long).unsqueeze(0).repeat(2, 1)
+            edge_index = (
+                torch.arange(x.size(0), dtype=torch.long).unsqueeze(0).repeat(2, 1)
+            )
         else:
             edge_index = torch.tensor(all_edges, dtype=torch.long).t().contiguous()
 

@@ -5,68 +5,86 @@ import pickle
 import numpy as np
 import pandas as pd
 from sklearn.calibration import CalibratedClassifierCV
-from sklearn.metrics import brier_score_loss, roc_auc_score, precision_score, recall_score, f1_score
+from sklearn.metrics import (
+    brier_score_loss,
+    roc_auc_score,
+    precision_score,
+    recall_score,
+    f1_score,
+)
 from src.pipelines.ieee_pipeline import IEEECISPipeline
 from src.graph.graph_builder import TransactionGraphBuilder
 
 from sklearn.base import BaseEstimator, ClassifierMixin
 
+
 class DummyEstimator(BaseEstimator, ClassifierMixin):
     """A dummy estimator that just returns the input probabilities for CalibratedClassifierCV."""
+
     _estimator_type = "classifier"
-    
+
     def fit(self, X, y):
         self.classes_ = np.array([0, 1])
         return self
-        
+
     def predict_proba(self, X):
         return np.column_stack((1 - X, X))
-        
+
     def predict(self, X):
         return (X >= 0.5).astype(int)
+
 
 from sklearn.linear_model import LogisticRegression
 from sklearn.isotonic import IsotonicRegression
 
+
 class PlattCalibrator:
     def __init__(self):
-        self.lr = LogisticRegression(class_weight='balanced')
+        self.lr = LogisticRegression(class_weight="balanced")
+
     def fit(self, X, y):
         self.lr.fit(X.reshape(-1, 1), y)
         return self
+
     def predict_proba(self, X):
         return self.lr.predict_proba(X.reshape(-1, 1))
-        
+
+
 class IsoCalibrator:
     def __init__(self):
-        self.iso = IsotonicRegression(y_min=0, y_max=1, out_of_bounds='clip')
+        self.iso = IsotonicRegression(y_min=0, y_max=1, out_of_bounds="clip")
+
     def fit(self, X, y):
         self.iso.fit(X.reshape(-1), y)
         return self
+
     def predict_proba(self, X):
         probs = self.iso.predict(X.reshape(-1))
         return np.column_stack((1 - probs, probs))
 
+
 def calibrate():
     with open("config/base_config.yaml", "r") as f:
         config = yaml.safe_load(f)
-        
+
     tx_path = config["data"]["ieee"]["transaction_path"]
     id_path = config["data"]["ieee"]["identity_path"]
-    
+
     # Load Validation Set (rows 100,001 - 150,000)
     pipeline_val = IEEECISPipeline(config)
+
     def load_val():
         df_txn = pd.read_csv(tx_path, skiprows=range(1, 100001), nrows=50000)
         df_id = pd.read_csv(id_path)
         return df_txn, df_id
+
     pipeline_val.load_raw = load_val
     with open("artifacts/production/label_encoders.pkl", "rb") as f:
         pipeline_val.label_encoders = pickle.load(f)
     processed_df_val = pipeline_val.run_pipeline(fit=False)
     builder_val = TransactionGraphBuilder(config)
     graph_data_val = builder_val.build_inductive_graph(processed_df_val)
-    
+
     with open("artifacts/production/scaler.pkl", "rb") as f:
         scaler = pickle.load(f)
     x_scaled_val = scaler.transform(graph_data_val.x.numpy()).astype(np.float32)
@@ -74,10 +92,12 @@ def calibrate():
 
     # Load Test Set (rows 150,001 - 200,000)
     pipeline_test = IEEECISPipeline(config)
+
     def load_test():
         df_txn = pd.read_csv(tx_path, skiprows=range(1, 150001), nrows=50000)
         df_id = pd.read_csv(id_path)
         return df_txn, df_id
+
     pipeline_test.load_raw = load_test
     with open("artifacts/production/label_encoders.pkl", "rb") as f:
         pipeline_test.label_encoders = pickle.load(f)
@@ -90,7 +110,9 @@ def calibrate():
     # Inference Session
     sess_options = ort.SessionOptions()
     sess_options.log_severity_level = 3
-    session = ort.InferenceSession("artifacts/production/fraud_model.onnx", sess_options=sess_options)
+    session = ort.InferenceSession(
+        "artifacts/production/fraud_model.onnx", sess_options=sess_options
+    )
     input_name = session.get_inputs()[0].name
     edge_name = session.get_inputs()[1].name
 
@@ -102,8 +124,12 @@ def calibrate():
             end = min(start + batch_size, n_nodes)
             batch_x = x_scaled[start:end]
             batch_len = end - start
-            local_edges = np.array([list(range(batch_len)), list(range(batch_len))], dtype=np.int64)
-            raw_logits = session.run(None, {input_name: batch_x, edge_name: local_edges})[0]
+            local_edges = np.array(
+                [list(range(batch_len)), list(range(batch_len))], dtype=np.int64
+            )
+            raw_logits = session.run(
+                None, {input_name: batch_x, edge_name: local_edges}
+            )[0]
             logits_s = raw_logits - raw_logits.max(axis=-1, keepdims=True)
             exp_l = np.exp(logits_s)
             probs = exp_l / exp_l.sum(axis=-1, keepdims=True)
@@ -120,7 +146,7 @@ def calibrate():
     # 1. Platt Scaling (Sigmoid)
     cal_sigmoid = PlattCalibrator()
     cal_sigmoid.fit(val_probs, y_true_val)
-    
+
     # 2. Isotonic Regression
     cal_isotonic = IsoCalibrator()
     cal_isotonic.fit(val_probs, y_true_val)
@@ -148,22 +174,38 @@ def calibrate():
     iso_probs = cal_isotonic.predict_proba(test_probs)[:, 1]
 
     print("\n--- Calibrated Evaluation ---")
-    brier_sig, f1_sig, rec_sig = evaluate_calibrator("Platt Scaling (Sigmoid)", sig_probs, y_true_test)
-    brier_iso, f1_iso, rec_iso = evaluate_calibrator("Isotonic Regression", iso_probs, y_true_test)
+    brier_sig, f1_sig, rec_sig = evaluate_calibrator(
+        "Platt Scaling (Sigmoid)", sig_probs, y_true_test
+    )
+    brier_iso, f1_iso, rec_iso = evaluate_calibrator(
+        "Isotonic Regression", iso_probs, y_true_test
+    )
 
     # Selection Logic
     calibrators = [
-        {"name": "Platt Scaling", "calibrator": cal_sigmoid, "f1": f1_sig, "rec": rec_sig},
-        {"name": "Isotonic Regression", "calibrator": cal_isotonic, "f1": f1_iso, "rec": rec_iso}
+        {
+            "name": "Platt Scaling",
+            "calibrator": cal_sigmoid,
+            "f1": f1_sig,
+            "rec": rec_sig,
+        },
+        {
+            "name": "Isotonic Regression",
+            "calibrator": cal_isotonic,
+            "f1": f1_iso,
+            "rec": rec_iso,
+        },
     ]
-    
+
     valid_cals = [c for c in calibrators if c["rec"] >= 0.75]
     if valid_cals:
         best_cal = max(valid_cals, key=lambda x: x["f1"])
     else:
         best_cal = max(calibrators, key=lambda x: x["rec"])
-        
-    print(f"\n{best_cal['name']} won! Saving to artifacts/production/prob_calibrator.pkl")
+
+    print(
+        f"\n{best_cal['name']} won! Saving to artifacts/production/prob_calibrator.pkl"
+    )
     best_calibrator = best_cal["calibrator"]
 
     with open("artifacts/production/prob_calibrator.pkl", "wb") as f:
@@ -174,6 +216,7 @@ def calibrate():
     with open("config/base_config.yaml", "w") as f:
         yaml.dump(config, f)
     print("Updated base_config.yaml decision_threshold to 0.50")
+
 
 if __name__ == "__main__":
     calibrate()

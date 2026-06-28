@@ -104,7 +104,9 @@ class ClassWeightedCrossEntropy(nn.Module):
         self.register_buffer("class_weights", class_weights)
 
     @classmethod
-    def from_class_counts(cls, n_negative: int, n_positive: int) -> "ClassWeightedCrossEntropy":
+    def from_class_counts(
+        cls, n_negative: int, n_positive: int
+    ) -> "ClassWeightedCrossEntropy":
         """
         Factory method: compute inverse-frequency weights from class counts.
 

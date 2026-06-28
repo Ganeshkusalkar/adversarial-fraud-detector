@@ -6,10 +6,15 @@ from datetime import datetime
 import argparse
 
 logger = logging.getLogger("ModelRegistry")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+
 
 class ModelRegistry:
-    def __init__(self, registry_dir="artifacts/registry", prod_dir="artifacts/production"):
+    def __init__(
+        self, registry_dir="artifacts/registry", prod_dir="artifacts/production"
+    ):
         self.registry_dir = registry_dir
         self.prod_dir = prod_dir
         os.makedirs(self.registry_dir, exist_ok=True)
@@ -43,7 +48,7 @@ class ModelRegistry:
         meta_path = os.path.join(version_dir, "metadata.json")
         if os.path.exists(meta_path):
             shutil.copy2(meta_path, active_meta_path)
-            
+
         logger.info(f"Promoted {version} to production. (Previous: {old_version})")
 
     def rollback(self, version: str, reason: str = "Manual rollback"):
@@ -61,7 +66,9 @@ if __name__ == "__main__":
 
     rollback_parser = subparsers.add_parser("rollback")
     rollback_parser.add_argument("version", help="Version to rollback to (e.g., v1)")
-    rollback_parser.add_argument("--reason", default="Manual rollback", help="Reason for rollback")
+    rollback_parser.add_argument(
+        "--reason", default="Manual rollback", help="Reason for rollback"
+    )
 
     args = parser.parse_args()
     registry = ModelRegistry()

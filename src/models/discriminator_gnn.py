@@ -144,9 +144,7 @@ class FraudGNN(nn.Module):
         return torch.softmax(logits, dim=-1)[:, 1]
 
     @torch.no_grad()
-    def classify(
-        self, x: torch.Tensor, edge_index: torch.Tensor
-    ) -> torch.Tensor:
+    def classify(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
         """
         Returns binary fraud predictions using the tuned decision threshold.
 
@@ -155,6 +153,7 @@ class FraudGNN(nn.Module):
         """
         proba = self.predict_fraud_proba(x, edge_index)
         return proba >= self.decision_threshold
+
 
 # Bugfix: replaced batchnorm with layernorm to fix test/train mismatch
 

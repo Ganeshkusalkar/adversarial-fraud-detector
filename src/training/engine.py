@@ -32,7 +32,7 @@ class AdversarialTrainingEngine:
         n_positive: int = 5000,
         checkpoint_dir: str = "artifacts/checkpoints",
         total_epochs: int = 30,
-        sample_weights = None,
+        sample_weights=None,
     ):
         """
         Args:
@@ -95,7 +95,6 @@ class AdversarialTrainingEngine:
         """
         real_graph_data = real_graph_data.to(self.device)
 
-
         # ----------------------------------------------------------------
         # STEP 1: Train Discriminator (GNN Defender)
         # Objective: Correctly classify real fraud AND flag synthetic fakes
@@ -106,13 +105,17 @@ class AdversarialTrainingEngine:
 
         # 1a. Focal loss on the real labeled graph nodes
         real_preds = self.gnn(real_graph_data.x, real_graph_data.edge_index)
-        
+
         if self.sample_weights is not None:
             # Sample a number of nodes equal to the full graph size to maintain epoch scale
             num_samples_to_draw = len(self.sample_weights)
-            sampler = torch.utils.data.WeightedRandomSampler(self.sample_weights, num_samples_to_draw, replacement=True)
+            sampler = torch.utils.data.WeightedRandomSampler(
+                self.sample_weights, num_samples_to_draw, replacement=True
+            )
             sampled_indices = list(sampler)
-            loss_real = self.criterion_D(real_preds[sampled_indices], real_graph_data.y[sampled_indices])
+            loss_real = self.criterion_D(
+                real_preds[sampled_indices], real_graph_data.y[sampled_indices]
+            )
         else:
             loss_real = self.criterion_D(real_preds, real_graph_data.y)
 
@@ -124,7 +127,9 @@ class AdversarialTrainingEngine:
         fake_flat = synthetic_features.mean(dim=1)  # [B, feat_dim]
 
         # Self-loop edges for the mock synthetic batch (no graph structure — node-wise scoring)
-        mock_edges = torch.stack([torch.arange(batch_size), torch.arange(batch_size)]).to(self.device)
+        mock_edges = torch.stack(
+            [torch.arange(batch_size), torch.arange(batch_size)]
+        ).to(self.device)
 
         fake_preds = self.gnn(fake_flat, mock_edges)
         # Tell the GNN these ARE fraud (class 1) — train it to catch adversarial inputs
@@ -231,5 +236,6 @@ class AdversarialTrainingEngine:
             "best_discriminator_loss": self.best_disc_loss,
             "history": epoch_history,
         }
+
 
 # Bugfix: corrected mock edges and generator sequence pooling in gan loop
