@@ -34,7 +34,11 @@ class CalibratedFraudPredictor:
 
         # Patch __main__ for unpickling the calibrator
         import sys
-        from src.evaluation.calibrate_probabilities import PlattCalibrator, IsoCalibrator
+        from src.evaluation.calibrate_probabilities import (
+            PlattCalibrator,
+            IsoCalibrator,
+        )
+
         if not hasattr(sys.modules["__main__"], "PlattCalibrator"):
             setattr(sys.modules["__main__"], "PlattCalibrator", PlattCalibrator)
         if not hasattr(sys.modules["__main__"], "IsoCalibrator"):
