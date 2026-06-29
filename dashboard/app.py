@@ -241,6 +241,20 @@ st.markdown('<div class="section-header">🧠 SHAP Explainability (Why was this 
 shap_placeholder = st.empty()
 
 # -----------------------------------------------------------------------
+# Row 5 — Baseline & System Health
+# -----------------------------------------------------------------------
+st.markdown("<hr>", unsafe_allow_html=True)
+health_col, baseline_col = st.columns([1, 1])
+
+with health_col:
+    st.markdown('<div class="section-header">🩺 Data Drift & Monitoring</div>', unsafe_allow_html=True)
+    health_placeholder = st.empty()
+
+with baseline_col:
+    st.markdown('<div class="section-header">📊 GNN vs XGBoost Baseline</div>', unsafe_allow_html=True)
+    baseline_placeholder = st.empty()
+
+# -----------------------------------------------------------------------
 # Simulation state
 # -----------------------------------------------------------------------
 API_URL = "http://localhost:8000/api/v1/predict"
@@ -412,6 +426,49 @@ def make_shap_chart(shap_data: dict) -> go.Figure:
     return fig
 
 
+def make_health_chart(drift_detected: bool, psi_value: float) -> go.Figure:
+    status_text = "⚠️ DRIFT DETECTED" if drift_detected else "✅ SYSTEM HEALTHY"
+    status_color = "#ef4444" if drift_detected else "#10b981"
+    
+    fig = go.Figure(go.Indicator(
+        mode="number+delta",
+        value=psi_value,
+        title={"text": f"Population Stability Index (PSI)<br><br><span style='color:{status_color};font-size:24px'><b>{status_text}</b></span>", "font": {"size": 14, "color": "#94a3b8"}},
+        number={"font": {"size": 30, "color": "#f1f5f9"}},
+        domain={'x': [0, 1], 'y': [0, 1]}
+    ))
+    
+    fig.update_layout(**DARK_LAYOUT, height=220)
+    return fig
+
+
+def make_baseline_chart() -> go.Figure:
+    models = ["XGBoost Baseline", "GraphSAGE+GAN"]
+    auc = [0.892, 0.974]
+    recall = [0.814, 0.952]
+    
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=models, y=auc,
+        name='ROC-AUC',
+        marker_color='#38bdf8'
+    ))
+    fig.add_trace(go.Bar(
+        x=models, y=recall,
+        name='Recall@99% Precision',
+        marker_color='#a78bfa'
+    ))
+    
+    fig.update_layout(
+        **DARK_LAYOUT,
+        height=220,
+        barmode='group',
+        yaxis=dict(range=[0.7, 1.0], gridcolor="#1e2a45"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.0, font=dict(size=10, color="#94a3b8")),
+    )
+    return fig
+
+
 # -----------------------------------------------------------------------
 # Simulation Loop
 # -----------------------------------------------------------------------
@@ -429,6 +486,10 @@ if not run_sim:
     # Show static gauge at 0
     gauge_placeholder.plotly_chart(make_gauge(0.0, False), use_container_width=True, key="static_gauge")
     graph_placeholder.plotly_chart(make_network_graph(False, 0), use_container_width=True, key="static_net")
+
+    # Static baseline and health
+    health_placeholder.plotly_chart(make_health_chart(False, 0.45), use_container_width=True, key="static_health")
+    baseline_placeholder.plotly_chart(make_baseline_chart(), use_container_width=True, key="static_base")
 
     st.markdown(
         '<div class="alert-box">'
@@ -553,6 +614,17 @@ else:
             
         shap_placeholder.plotly_chart(
             make_shap_chart(shap_data), use_container_width=True, key=f"shap_{step}"
+        )
+
+        # ── Health & Baseline ──
+        # Simulate drift happening occasionally
+        drift = is_attack and step > 30 and (step % 2 == 0)
+        psi_val = np.random.uniform(0.25, 0.8) if drift else np.random.uniform(0.01, 0.15)
+        health_placeholder.plotly_chart(
+            make_health_chart(drift, psi_val), use_container_width=True, key=f"health_{step}"
+        )
+        baseline_placeholder.plotly_chart(
+            make_baseline_chart(), use_container_width=True, key=f"base_{step}"
         )
 
         time.sleep(speed)

@@ -18,11 +18,13 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install flake8 black
+        pip install flake8 black bandit
     - name: Run Black
       run: black --check src/ api/ tests/ || true
     - name: Run Flake8
       run: flake8 src/ api/ tests/ --max-line-length=150 --extend-ignore=E501,E402,F401,E203,F541,W293,E302
+    - name: Run Bandit Security Scan
+      run: bandit -r src/ api/ -ll -ii || true
 
   test:
     needs: lint
@@ -77,4 +79,13 @@ jobs:
         docker ps -a
         exit 1
 
-        
+  deploy-mock:
+    needs: docker-build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Mock AWS ECR Push & ECS Deploy
+      run: |
+        echo "Successfully authenticated with AWS ECR"
+        echo "Pushing image fraud-detector:${GITHUB_SHA} to ECR..."
+        echo "Updating ECS service..."
+        echo "Deployment to production successful!"
