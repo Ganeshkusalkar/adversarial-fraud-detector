@@ -210,6 +210,8 @@ curl -H "X-API-Key: your-generated-key-here" ...
 │   └── prod_config.yaml
 ├── dashboard/
 │   └── app.py                 # Executive app with Live Stream, A/B Monitor, and ROI Calculator tabs
+├── deploy/
+│   └── terraform/             # Terraform infrastructure-as-code configuration scripts (AWS Fargate)
 ├── docs/
 │   ├── architecture.md        # Detailed system design & Mermaid diagram
 │   ├── case_studies.md        # Real-world business cases (rotated card ring, coordinate drift)
