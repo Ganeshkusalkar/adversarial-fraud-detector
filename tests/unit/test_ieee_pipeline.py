@@ -52,10 +52,10 @@ def test_pipeline_preprocess(base_config, mock_raw_data):
     pipeline = IEEECISPipeline(base_config)
     df = pipeline.preprocess(mock_raw_data, fit=True)
 
-    # Check merge on TransactionID (TransactionID 102 has id_01 as NaN because it's left join)
+    # Check merge on TransactionID (TransactionID 102 has id_01 as -5.0 because it gets imputed with the median)
     assert len(df) == 3
     assert "id_01" in df.columns
-    assert pd.isnull(df.loc[df["TransactionID"] == 102, "id_01"].values[0])
+    assert df.loc[df["TransactionID"] == 102, "id_01"].values[0] == -5.0
 
     # Check V-feature imputation and missingness indicator creation
     assert "V1_is_missing" in df.columns

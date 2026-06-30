@@ -17,9 +17,21 @@ def client():
     mock_shap = MagicMock()
     mock_shap.explain.return_value = {"Vesta_0": 0.05, "TransactionAmt": 0.12}
 
-    with patch.object(api_module, "PREDICTOR", mock_pred):
-        with patch.object(api_module, "SHAP_EXPLAINER", mock_shap):
-            yield TestClient(app, raise_server_exceptions=False)
+    # Manually configure stats so drift endpoint works without running startup
+    api_module._REFERENCE_STATS = {f"V{i}": {"mean": 0.0, "std": 1.0} for i in range(339)}
+    api_module._REFERENCE_STATS.update(
+        {
+            "TransactionAmt": {"mean": 130.0, "std": 400.0},
+            "C1": {"mean": 1.0, "std": 2.0},
+            "C2": {"mean": 1.0, "std": 2.0},
+            "D1": {"mean": 10.0, "std": 50.0},
+        }
+    )
+
+    with patch.dict("os.environ", {"API_KEYS": "test-key-123,another-key-456"}):
+        with patch.object(api_module, "PREDICTOR", mock_pred):
+            with patch.object(api_module, "SHAP_EXPLAINER", mock_shap):
+                yield TestClient(app, raise_server_exceptions=False)
 
 
 @pytest.fixture

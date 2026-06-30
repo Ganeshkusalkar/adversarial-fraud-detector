@@ -69,12 +69,12 @@ def test_calculate_adversarial_robustness_torch(base_config):
 
     engine = FraudEvaluationEngine(base_config)
 
-    mock_model = MagicMock(spec=torch.nn.Module)
+    mock_model = MagicMock()
     # in_channels attribute
     mock_model.conv1 = MagicMock()
     mock_model.conv1.in_channels = 20
 
-    mock_generator = MagicMock(spec=torch.nn.Module)
+    mock_generator = MagicMock()
     mock_generator.feature_dim = 15
     mock_generator.sample_noise.return_value = torch.randn(1, 5, 32)
     mock_generator.return_value = torch.randn(1, 5, 15)

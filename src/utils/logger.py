@@ -10,7 +10,7 @@ def setup_logger(
     Configures and returns an enterprise-grade structured logger.
     """
     logger = logging.getLogger(name)
-    if logger.hasHandlers():
+    if logger.handlers:
         return logger
 
     logger.setLevel(level)
