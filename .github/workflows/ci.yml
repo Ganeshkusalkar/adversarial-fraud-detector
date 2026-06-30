@@ -21,7 +21,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: "pip"
 
       - name: Install lint dependencies
         run: |
@@ -58,19 +57,21 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: "pip"
+
+      - name: Clear pip cache and upgrade pip
+        run: |
+          pip cache purge
+          python -m pip install --upgrade pip setuptools wheel
 
       - name: Install PyTorch (CPU) - FIRST
         run: |
-          python -m pip install --upgrade pip
-          # Install PyTorch FIRST, before any packages that depend on it
-          pip install -f https://download.pytorch.org/whl/cpu/torch_stable.html "torch==2.0.1+cpu"
+          pip install --no-cache-dir \
+            -f https://download.pytorch.org/whl/cpu/torch_stable.html \
+            "torch==2.0.1+cpu"
 
       - name: Install lightweight CI dependencies
         run: |
-          python -m pip install --upgrade pip
-          # Core API & data deps
-          pip install \
+          pip install --no-cache-dir \
             fastapi==0.103.1 \
             uvicorn==0.23.2 \
             pydantic==2.3.0 \
@@ -90,15 +91,14 @@ jobs:
             pytest==7.4.2 \
             pytest-cov==4.1.0
 
-      - name: Install PyTorch Geometric (prebuilt wheels for CI)
+      - name: Install PyTorch Geometric with prebuilt wheels
         run: |
-          python -m pip install --upgrade pip
-          # Install torch and PyG in the same pip call to ensure torch is available for torch-scatter build
           PYG_INDEX="https://data.pyg.org/whl/torch-2.0.1+cpu.html"
-          pip install -f https://download.pytorch.org/whl/cpu/torch_stable.html \
-            "torch==2.0.1+cpu" \
+          pip install --no-cache-dir --no-build-isolation \
+            -f https://download.pytorch.org/whl/cpu/torch_stable.html \
             --extra-index-url ${PYG_INDEX} \
             torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric==2.3.1
+
       - name: Run unit tests with coverage
         run: |
           python -m pytest tests/unit/ \
@@ -134,12 +134,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: "pip"
 
       - name: Install lightweight CI dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install \
+          pip install --no-cache-dir \
             fastapi==0.103.1 \
             uvicorn==0.23.2 \
             pydantic==2.3.0 \
