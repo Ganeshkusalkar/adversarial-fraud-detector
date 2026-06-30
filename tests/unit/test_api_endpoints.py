@@ -18,7 +18,9 @@ def client():
     mock_shap.explain.return_value = {"Vesta_0": 0.05, "TransactionAmt": 0.12}
 
     # Manually configure stats so drift endpoint works without running startup
-    api_module._REFERENCE_STATS = {f"V{i}": {"mean": 0.0, "std": 1.0} for i in range(339)}
+    api_module._REFERENCE_STATS = {
+        f"V{i}": {"mean": 0.0, "std": 1.0} for i in range(339)
+    }
     api_module._REFERENCE_STATS.update(
         {
             "TransactionAmt": {"mean": 130.0, "std": 400.0},
