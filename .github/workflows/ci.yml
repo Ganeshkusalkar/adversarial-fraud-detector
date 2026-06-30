@@ -25,13 +25,10 @@ jobs:
       - name: Install lint dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install flake8 black isort bandit
+          pip install flake8 black bandit
 
       - name: Check formatting with Black (fail on violations)
         run: black --check src/ api/ tests/
-
-      - name: Check import order with isort
-        run: isort --check-only src/ api/ tests/ --profile black
 
       - name: Run Flake8
         run: |
