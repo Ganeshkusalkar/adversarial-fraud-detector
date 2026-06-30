@@ -213,11 +213,11 @@ jobs:
           echo "❌ Health check failed after 90s — printing container logs:"
           docker logs fraud-api > container_logs.txt 2>&1 || true
           docker ps -a >> container_logs.txt 2>&1 || true
-          exit 0
+          exit 1
 
       - name: Upload container logs on failure
         uses: actions/upload-artifact@v4
-        if: always()
+        if: failure()
         with:
           name: container-logs
           path: container_logs.txt
