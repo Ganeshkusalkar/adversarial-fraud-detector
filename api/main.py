@@ -8,8 +8,9 @@ from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-from api.schemas import TransactionInput, FraudPredictionResponse
+from api.schemas import TransactionInput, FraudPredictionResponse, ABPredictionResponse
 from api.dependencies import verify_api_key
+from api.ab_testing import ABTestingEngine
 from src.utils.logger import setup_logger
 from src.evaluation.calibrated_predictor import CalibratedFraudPredictor
 from monitoring.metrics import (
@@ -35,6 +36,7 @@ DECISION_THRESHOLD = float(
 
 logger = setup_logger("APIServingGateway")
 limiter = Limiter(key_func=get_remote_address)
+ab_engine = ABTestingEngine(ab_split=0.5)
 
 app = FastAPI(
     title="Adversarial Transaction Disguise Detector API",
@@ -241,6 +243,92 @@ async def check_drift():
         return JSONResponse(
             status_code=500, content={"status": "error", "message": str(e)}
         )
+
+
+@app.post("/api/v1/predict_ab", response_model=ABPredictionResponse)
+@limiter.limit("100/minute")
+async def predict_ab_route(
+    request: Request,
+    payload: TransactionInput,
+    predictor: CalibratedFraudPredictor = Depends(get_predictor),
+    _api_key: str = Depends(verify_api_key),
+):
+    """
+    Evaluates a transaction's risk using either Group A (GraphSAGE+GAN)
+    or Group B (XGBoost Baseline) based on a sticky hash-based routing split.
+    """
+    start_time = time.time()
+    correlation_id = getattr(request.state, "correlation_id", "unknown")
+
+    ab_group = ab_engine.get_route(payload.TransactionID)
+    model_used = (
+        "GraphSAGE+GAN (GNN)" if ab_group == "A" else "XGBoost Baseline (Tabular)"
+    )
+
+    try:
+        if ab_group == "A":
+            sanitized_vesta = np.clip(payload.vesta_features, -10.0, 10.0).tolist()
+            input_vector = np.array(
+                sanitized_vesta
+                + [payload.TransactionAmt, payload.C1, payload.C2, payload.D1]
+                + [1.0, 1.0],
+                dtype=np.float32,
+            ).reshape(1, -1)
+
+            mock_edges = np.zeros((2, 1), dtype=np.int64)
+            fraud_probability = predictor.predict(input_vector, mock_edges)
+        else:
+            # Group B (XGBoost)
+            if ab_engine.xgb_model is not None:
+                sanitized_vesta = np.clip(payload.vesta_features, -10.0, 10.0).tolist()
+                input_vector = np.array(
+                    sanitized_vesta
+                    + [payload.TransactionAmt, payload.C1, payload.C2, payload.D1]
+                    + [1.0, 1.0],
+                    dtype=np.float32,
+                ).reshape(1, -1)
+
+                probs = ab_engine.xgb_model.predict_proba(input_vector)
+                fraud_probability = float(probs[0, 1])
+            else:
+                fraud_probability = ab_engine.predict_xgb_simulated(
+                    payload.TransactionAmt, payload.C2
+                )
+
+        is_fraud = bool(fraud_probability >= DECISION_THRESHOLD)
+        latency_ms = (time.time() - start_time) * 1000.0
+
+        # Update telemetry
+        ab_engine.record_metrics(ab_group, is_fraud, latency_ms)
+
+        logger.info(
+            f"TxID: {payload.TransactionID} scored via Group {ab_group} ({model_used}). Prob: {fraud_probability:.4f}",
+            extra={"correlation_id": correlation_id},
+        )
+
+        return ABPredictionResponse(
+            transaction_id=payload.TransactionID,
+            ab_group=ab_group,
+            model_used=model_used,
+            fraud_score=fraud_probability,
+            is_fraudulent=is_fraud,
+            processing_latency_ms=round(latency_ms, 2),
+        )
+    except Exception as e:
+        logger.error(
+            f"A/B prediction failed: {str(e)}", extra={"correlation_id": correlation_id}
+        )
+        raise HTTPException(
+            status_code=500, detail="Internal A/B inference engine failure."
+        )
+
+
+@app.get("/api/v1/ab_status")
+async def get_ab_status(_api_key: str = Depends(verify_api_key)):
+    """
+    Exposes A/B test routing statistics and two-proportion Z-test significance.
+    """
+    return ab_engine.get_status_report()
 
 
 @app.get("/health")

@@ -189,6 +189,8 @@ curl -H "X-API-Key: your-generated-key-here" ...
 | `GET /metrics` | ❌ No | — |
 | `GET /monitoring/drift` | ❌ No | — |
 | `POST /api/v1/predict` | ✅ Yes | 100/min |
+| `POST /api/v1/predict_ab` | ✅ Yes | 100/min |
+| `GET /api/v1/ab_status` | ✅ Yes | 10/min |
 | `POST /api/v1/explain` | ✅ Yes | 10/min |
 
 ## Project Structure
@@ -199,6 +201,7 @@ curl -H "X-API-Key: your-generated-key-here" ...
 │       ├── ci.yml             # Lint → Unit Tests (≥40% coverage) → Integration → Docker Build
 │       └── security.yml       # Weekly Bandit + Safety CVE + secrets detection
 ├── api/
+│   ├── ab_testing.py          # A/B testing routing engine & statistics Z-tester
 │   ├── dependencies.py        # API key auth + ONNX session DI
 │   ├── main.py                # FastAPI app, routes, startup
 │   └── schemas.py             # Pydantic request/response models
@@ -206,9 +209,11 @@ curl -H "X-API-Key: your-generated-key-here" ...
 │   ├── base_config.yaml
 │   └── prod_config.yaml
 ├── dashboard/
-│   └── app.py
+│   └── app.py                 # Executive app with Live Stream, A/B Monitor, and ROI Calculator tabs
 ├── docs/
-│   └── architecture.md        # Detailed system design & Mermaid diagram
+│   ├── architecture.md        # Detailed system design & Mermaid diagram
+│   ├── case_studies.md        # Real-world business cases (rotated card ring, coordinate drift)
+│   └── cloud_deployment.md    # Production AWS SageMaker and GCP Vertex AI deployment guides
 ├── monitoring/
 │   ├── alerting_rules.py
 │   ├── metrics.py             # Prometheus counters/histograms
@@ -238,6 +243,7 @@ curl -H "X-API-Key: your-generated-key-here" ...
 │   ├── load/
 │   │   └── locustfile.py          # Locust load test scenarios
 │   └── unit/
+│       ├── test_ab_testing.py     # Z-test math and A/B endpoint tests
 │       ├── test_api_schemas.py    # Pydantic validation tests
 │       ├── test_generator.py      # LSTM generator shape/gradient tests
 │       ├── test_layers.py         # GraphSAGE layer + FraudGNN discriminator tests
@@ -245,6 +251,7 @@ curl -H "X-API-Key: your-generated-key-here" ...
 │       ├── test_monitoring.py     # PSI drift detection tests
 │       └── test_pipelines.py      # Graph builder node/edge/feature tests
 ├── .env.example
+├── .pre-commit-config.yaml        # Automated code quality check configurations
 ├── docker-compose.yml
 ├── Dockerfile
 ├── pytest.ini

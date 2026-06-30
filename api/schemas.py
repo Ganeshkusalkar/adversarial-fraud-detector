@@ -99,3 +99,18 @@ class FraudPredictionResponse(BaseModel):
         ...,
         description="Internal system server inference latency tracking performance benchmark.",
     )
+
+
+class ABPredictionResponse(BaseModel):
+    transaction_id: str
+    ab_group: str = Field(..., description="A/B test group routed to: 'A' or 'B'.")
+    model_used: str = Field(
+        ..., description="Name of the model that evaluated the transaction."
+    )
+    fraud_score: float = Field(
+        ..., description="Fraud risk score probability (0.0 to 1.0)."
+    )
+    is_fraudulent: bool = Field(..., description="Decision binary classification.")
+    processing_latency_ms: float = Field(
+        ..., description="Server inference latency in milliseconds."
+    )
