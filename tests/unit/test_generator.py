@@ -32,7 +32,6 @@ def generator():
 
 
 class TestFraudTransactionGeneratorShape:
-
     def test_forward_output_shape(self, generator):
         """Output must be (batch_size, sequence_length, feature_dim)."""
         batch_size = 8
@@ -63,7 +62,6 @@ class TestFraudTransactionGeneratorShape:
 
 
 class TestFraudTransactionGeneratorValues:
-
     def test_output_bounded_by_tanh(self, generator):
         """All output values must be in (-1, 1] due to tanh activation."""
         noise = generator.sample_noise(batch_size=32)
@@ -100,7 +98,6 @@ class TestFraudTransactionGeneratorValues:
 
 
 class TestFraudTransactionGeneratorGradients:
-
     def test_gradients_flow_through_generator(self, generator):
         """Gradients must propagate back through LSTM → fc → tanh."""
         noise = generator.sample_noise(batch_size=4)
@@ -120,7 +117,6 @@ class TestFraudTransactionGeneratorGradients:
 
 
 class TestFraudTransactionGeneratorConfig:
-
     def test_custom_dimensions(self):
         """Generator should respect custom noise_dim, hidden_dim, feature_dim."""
         from src.models.generator_lstm import FraudTransactionGenerator

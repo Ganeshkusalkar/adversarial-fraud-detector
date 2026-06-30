@@ -16,7 +16,6 @@ from src.monitoring.drift_detection import DataDriftDetector, calculate_psi
 
 
 class TestCalculatePSI:
-
     def test_identical_distributions_near_zero(self):
         """PSI between identical distributions must be ~0."""
         np.random.seed(0)
@@ -59,7 +58,6 @@ class TestCalculatePSI:
 
 
 class TestDriftDetectorNoDrift:
-
     def test_no_drift_identical_distribution(self):
         """Same distribution: detector must NOT flag drift."""
         np.random.seed(42)
@@ -84,7 +82,6 @@ class TestDriftDetectorNoDrift:
 
 
 class TestDriftDetectorWithDrift:
-
     def test_drift_detected_shifted_mean(self):
         """5-sigma mean shift must be flagged as drift."""
         np.random.seed(42)
@@ -109,7 +106,6 @@ class TestDriftDetectorWithDrift:
 
 
 class TestDriftDetectorEdgeCases:
-
     def test_missing_column_in_production_data_is_skipped(self):
         """If a training feature is absent from prod data, it's silently skipped."""
         ref = pd.DataFrame(

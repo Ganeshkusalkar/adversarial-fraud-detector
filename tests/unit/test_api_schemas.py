@@ -15,7 +15,6 @@ from api.schemas import TransactionInput, FraudPredictionResponse
 
 
 class TestTransactionInputSchema:
-
     def _valid_payload(self, **overrides) -> dict:
         payload = {
             "TransactionID": "TXN-001",
@@ -104,7 +103,6 @@ class TestTransactionInputSchema:
 
 
 class TestFraudPredictionResponseSchema:
-
     def _valid_response(self, **overrides) -> dict:
         response = {
             "transaction_id": "TXN-001",

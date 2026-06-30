@@ -90,7 +90,6 @@ def _auth_header(key=TEST_API_KEY):
 
 @skip_if_no_app
 class TestHealthEndpoint:
-
     def test_health_returns_200(self, client):
         response = client.get("/health")
         assert response.status_code == 200
@@ -117,7 +116,6 @@ class TestHealthEndpoint:
 
 @skip_if_no_app
 class TestPredictAuthentication:
-
     def test_missing_api_key_returns_403(self, client, valid_payload):
         """No X-API-Key header → 403 Forbidden."""
         response = client.post("/api/v1/predict", json=valid_payload)
@@ -153,7 +151,6 @@ class TestPredictAuthentication:
 
 @skip_if_no_app
 class TestPredictResponseSchema:
-
     def test_predict_returns_correct_schema(self, client, valid_payload):
         response = client.post(
             "/api/v1/predict",
@@ -222,7 +219,6 @@ class TestPredictResponseSchema:
 
 @skip_if_no_app
 class TestPredictValidation:
-
     def test_negative_amount_rejected(self, client):
         payload = {
             "TransactionID": "TXN-BAD",
@@ -259,7 +255,6 @@ class TestPredictValidation:
 
 @skip_if_no_app
 class TestMiddleware:
-
     def test_correlation_id_header_present(self, client):
         """Every response must carry X-Correlation-ID from the middleware."""
         response = client.get("/health")
@@ -285,7 +280,6 @@ class TestMiddleware:
 
 @skip_if_no_app
 class TestDriftEndpoint:
-
     def test_drift_endpoint_accessible_without_auth(self, client):
         response = client.get("/monitoring/drift")
         assert response.status_code != 403

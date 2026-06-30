@@ -27,7 +27,6 @@ requires_torch = pytest.mark.skipif(not HAS_TORCH, reason="PyTorch not installed
 
 
 class TestGraphSAGELayer:
-
     @requires_torch
     def test_output_shape_no_concat(self):
         """Non-concatenation mode: output dim == out_feats."""
@@ -87,7 +86,6 @@ class TestGraphSAGELayer:
 
 @requires_torch
 class TestFraudGNN:
-
     @pytest.fixture(autouse=True)
     def setup(self):
         from src.models.discriminator_gnn import FraudGNN
