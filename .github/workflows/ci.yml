@@ -107,6 +107,7 @@ jobs:
             --only-binary=:all: \
             torch-scatter torch-sparse torch-cluster torch-spline-conv
           pip install --no-cache-dir torch-geometric==2.3.1
+          pip install --no-cache-dir "httpx<0.28.0"
 
       - name: Run unit tests with coverage
         continue-on-error: false
@@ -170,6 +171,7 @@ jobs:
             requests==2.31.0 \
             httpx==0.24.1 \
             pytest==7.4.2
+          pip install --no-cache-dir "httpx<0.28.0"
 
       - name: Run integration tests
         run: |
