@@ -8,17 +8,11 @@ import pytest
 import numpy as np
 import pandas as pd
 
-try:
-    import torch
-
-    HAS_TORCH = True
-except ImportError:
-    HAS_TORCH = False
-
-requires_torch = pytest.mark.skipif(not HAS_TORCH, reason="PyTorch not installed")
-
-# All graph builder tests require torch (it uses torch.tensor internally)
-pytestmark = requires_torch
+# Skip entire module at collection time if torch / torch_geometric are absent.
+# This prevents a hard ImportError from graph_builder.py which has top-level
+# `import torch` and `from torch_geometric.data import Data`.
+torch = pytest.importorskip("torch", reason="PyTorch not installed — skipping graph builder tests")
+pytest.importorskip("torch_geometric", reason="torch_geometric not installed — skipping graph builder tests")
 
 
 # ---------------------------------------------------------------------------

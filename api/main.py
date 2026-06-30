@@ -20,6 +20,8 @@ from monitoring.metrics import (
 )
 from src.monitoring.drift_detector import drift_detector
 from monitoring.alerting_rules import alerting_engine
+from prometheus_client import make_asgi_app
+from src.evaluation.shap_explainer import FraudSHAPExplainer
 
 with open("config/base_config.yaml", "r") as f:
     config = yaml.safe_load(f)
@@ -32,12 +34,11 @@ DECISION_THRESHOLD = float(
 )
 
 logger = setup_logger("APIServingGateway")
-
 limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
     title="Adversarial Transaction Disguise Detector API",
-    description="FAANG-standard high-throughput inductive GNN fraud detection microservice micro-engine.",
+    description="GNN fraud detection microservice.",
     version="1.0.0",
 )
 
@@ -52,12 +53,7 @@ CALIBRATOR_PATH = os.getenv(
     "CALIBRATOR_PATH", "artifacts/production/prob_calibrator.pkl"
 )
 
-# Reference distribution stats stored at startup for drift monitoring
-# Shape: dict mapping feature_name -> {"mean": float, "std": float}
 _REFERENCE_STATS: dict = {}
-
-# Metrics Endpoint
-from prometheus_client import make_asgi_app
 
 metrics_app = make_asgi_app()
 app.mount("/metrics", metrics_app)
@@ -72,27 +68,19 @@ async def add_correlation_id(request: Request, call_next):
     return response
 
 
-from src.evaluation.shap_explainer import FraudSHAPExplainer
-
-
 @app.on_event("startup")
 def load_production_artifacts():
     global PREDICTOR, SHAP_EXPLAINER, _REFERENCE_STATS
     try:
-        logger.info(
-            f"Loading calibrated execution runtime graph configurations from target path: {MODEL_PATH}"
-        )
+        logger.info(f"Loading calibrated predictor runtime from: {MODEL_PATH}")
         PREDICTOR = CalibratedFraudPredictor(
             model_path=MODEL_PATH,
             scaler_path=SCALER_PATH,
             calibrator_path=CALIBRATOR_PATH,
         )
-        # Initialize SHAP explainer
         SHAP_EXPLAINER = FraudSHAPExplainer(PREDICTOR)
 
-        # Seed reference distribution stats for drift monitoring.
-        # In production these would be loaded from a pre-computed artifact;
-        # here we initialise with the IEEE-CIS training baseline approximation.
+        # Baseline reference distribution stats for drift monitoring
         _REFERENCE_STATS = {f"V{i}": {"mean": 0.0, "std": 1.0} for i in range(339)}
         _REFERENCE_STATS.update(
             {
@@ -103,10 +91,9 @@ def load_production_artifacts():
             }
         )
 
-        logger.info("Calibrated Fraud Predictor runtime established in memory.")
-        logger.info(f"Configured DECISION_THRESHOLD: {DECISION_THRESHOLD}")
+        logger.info(f"Calibrated Fraud Predictor loaded. Threshold: {DECISION_THRESHOLD}")
     except Exception as e:
-        logger.error(f"Critical System Failure during loading phase: {str(e)}")
+        logger.error(f"Failed to load production artifacts during startup: {str(e)}")
         PREDICTOR = None
         SHAP_EXPLAINER = None
 
@@ -139,10 +126,7 @@ async def predict_transaction_risk(
     correlation_id = getattr(request.state, "correlation_id", "unknown")
 
     try:
-        # Input Sanitization
         sanitized_vesta = np.clip(payload.vesta_features, -10.0, 10.0).tolist()
-
-        # Step 1: Process and vector-align the unstructured payload input properties
         input_vector = np.array(
             sanitized_vesta
             + [payload.TransactionAmt, payload.C1, payload.C2, payload.D1]
@@ -150,14 +134,12 @@ async def predict_transaction_risk(
             dtype=np.float32,
         ).reshape(1, -1)
 
-        # In production environments, mock graph connectivity structures are passed to simulate identity mapping paths
         mock_edges = np.zeros((2, 1), dtype=np.int64)
 
-        # Step 2: Execute inference and calibration layer
         fraud_probability = predictor.predict(input_vector, mock_edges)
         is_fraud = bool(fraud_probability >= DECISION_THRESHOLD)
 
-        # Step 3: Metrics & Alerting Update
+        # Update metrics & alerting
         FRAUD_PREDICTIONS_TOTAL.labels(flagged=str(is_fraud)).inc()
         FRAUD_SCORE_DISTRIBUTION.observe(fraud_probability)
         alerting_engine.record_prediction(is_fraud)
@@ -167,7 +149,7 @@ async def predict_transaction_risk(
         alerting_engine.record_latency(latency * 1000.0)
 
         logger.info(
-            f"TxID: {payload.TransactionID} scored securely in {latency*1000.0:.2f}ms. Calibrated Prob: {fraud_probability:.4f}",
+            f"TxID: {payload.TransactionID} scored. Prob: {fraud_probability:.4f}",
             extra={"correlation_id": correlation_id},
         )
 
@@ -225,13 +207,6 @@ async def explain_transaction(
 async def check_drift():
     """
     Checks feature distribution drift against the training baseline.
-
-    Uses stored reference statistics (mean/std per feature) seeded at startup
-    from the IEEE-CIS training distribution. Compares against a small synthetic
-    production batch generated around the reference distribution.
-
-    In production this endpoint would consume a rolling buffer of recent
-    live transactions instead of a synthetic batch.
     """
     try:
         if not _REFERENCE_STATS:
@@ -239,12 +214,11 @@ async def check_drift():
                 status_code=503,
                 content={
                     "status": "unavailable",
-                    "message": "Reference stats not initialised. Model may not be loaded.",
+                    "message": "Reference stats not initialised.",
                 },
             )
 
-        # Build a synthetic production batch centred on reference stats.
-        # Small Gaussian perturbation simulates normal operational variance.
+        # Build synthetic production batch
         rng = np.random.default_rng(seed=int(time.time()) % 1000)
         n_samples = 200
         feature_names = list(_REFERENCE_STATS.keys())
@@ -269,7 +243,4 @@ async def check_drift():
 
 @app.get("/health")
 async def health_check():
-    """
-    Exposes an infrastructure monitoring probe interface.
-    """
     return {"status": "healthy", "engine_loaded": PREDICTOR is not None}

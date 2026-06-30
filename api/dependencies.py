@@ -8,24 +8,17 @@ from fastapi.security import APIKeyHeader
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# API Key Authentication
-# ---------------------------------------------------------------------------
-
 _API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 def _get_valid_keys() -> set:
     """
     Reads the comma-separated list of valid API keys from the API_KEYS env var.
-    Falls back to a development key if the env var is not set, but logs a warning.
     """
     raw = os.getenv("API_KEYS", "")
     if not raw:
         logger.warning(
-            "API_KEYS env var is not set. "
-            "All API key checks will FAIL. "
-            "Set API_KEYS=<your-key> in .env or environment."
+            "API_KEYS env var is not set. All API key checks will fail."
         )
         return set()
     keys = {k.strip() for k in raw.split(",") if k.strip()}
@@ -35,15 +28,7 @@ def _get_valid_keys() -> set:
 
 def verify_api_key(api_key: Optional[str] = Security(_API_KEY_HEADER)) -> str:
     """
-    FastAPI dependency that validates the X-API-Key request header.
-
-    Usage:
-        @app.post("/protected")
-        async def route(key: str = Depends(verify_api_key)):
-            ...
-
-    Raises:
-        HTTPException(403): when the key is missing or not in the allowed set.
+    Validates the X-API-Key request header.
     """
     valid_keys = _get_valid_keys()
     if not api_key or api_key not in valid_keys:
@@ -54,22 +39,17 @@ def verify_api_key(api_key: Optional[str] = Security(_API_KEY_HEADER)) -> str:
     return api_key
 
 
-# Fallback for ONNX Runtime
 try:
     import onnxruntime as ort
-
     HAS_ONNX = True
 except ImportError:
     HAS_ONNX = False
-    logger.warning(
-        "onnxruntime is not installed. Running dependencies in simulated environment."
-    )
+    logger.warning("onnxruntime is not installed. Running in simulated mode.")
 
 
 class ONNXInferenceSession:
     """
     Wrapper around ONNX runtime InferenceSession.
-    Ensures safe initialization and execution of performance-vetted GNN models.
     """
 
     def __init__(self, model_path: str):
@@ -79,19 +59,14 @@ class ONNXInferenceSession:
 
     def _load_session(self):
         if not HAS_ONNX:
-            logger.warning(
-                "ONNX runtime unavailable. Model predictions will be simulated."
-            )
+            logger.warning("ONNX runtime unavailable. Predictions will be simulated.")
             return
 
         if not Path(self.model_path).exists():
-            logger.error(
-                f"ONNX model weight not found at {self.model_path}. Please compile PyTorch checkpoints first."
-            )
+            logger.error(f"ONNX model not found at {self.model_path}.")
             return
 
         try:
-            # Load with CPU Execution Provider as default fallback
             self.session = ort.InferenceSession(
                 self.model_path, providers=["CPUExecutionProvider"]
             )
@@ -100,32 +75,24 @@ class ONNXInferenceSession:
             logger.error(f"Failed to load ONNX model session: {e}")
 
     def predict(self, node_features, edge_index):
-        """
-        Executes real-time inference on ONNX session.
-        """
         if self.session is None:
-            # Simulated inference logic: simple deterministic hashing/randomness for mock testing
+            # Simulated inference logic: simple deterministic hashing for mock testing
             import numpy as np
-
-            # Generate dummy probability based on node features
             avg_val = float(np.mean(node_features)) if len(node_features) > 0 else 0.1
             prob = min(max(abs(avg_val), 0.0), 1.0)
             return prob
 
-        # Execute ONNX runtime inference
         inputs = {"node_features": node_features, "edge_index": edge_index}
         outputs = self.session.run(None, inputs)
-        # Assuming model outputs logits as first output
         logits = outputs[0]
-        # Softmax computation
+        
         import numpy as np
-
         exp_logits = np.exp(logits - np.max(logits, axis=-1, keepdims=True))
         probs = exp_logits / np.sum(exp_logits, axis=-1, keepdims=True)
-        return float(probs[0, 1])  # Class 1 (fraud) probability
+        return float(probs[0, 1])
 
 
-# Singleton pattern for ONNX Session Injection
+# Singleton for ONNX Session
 _inference_session = None
 
 
