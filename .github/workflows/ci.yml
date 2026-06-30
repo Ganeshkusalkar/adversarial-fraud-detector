@@ -87,12 +87,17 @@ jobs:
       - name: Install PyTorch (CPU)
         run: |
           python -m pip install --upgrade pip
-          # Install CPU-only PyTorch wheel
-          pip install -f https://download.pytorch.org/whl/cpu/torch_stable.html torch
+          # Install a CPU wheel pinned to the repo's expected torch version
+          pip install -f https://download.pytorch.org/whl/cpu/torch_stable.html "torch==2.0.1+cpu"
 
-      - name: Install PyTorch Geometric
+      - name: Install PyTorch Geometric (prebuilt wheels for CI)
         run: |
-          pip install torch-geometric==2.3.1
+          python -m pip install --upgrade pip
+          # PyG requires several compiled extension wheels that must match the torch build.
+          # Use the official PyG wheel index for the matching torch+cpu build to avoid building from source.
+          PYG_INDEX="https://data.pyg.org/whl/torch-2.0.1+cpu.html"
+          pip install --extra-index-url ${PYG_INDEX} \
+            torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric==2.3.1 -f https://download.pytorch.org/whl/cpu/torch_stable.html
 
       - name: Run unit tests with coverage
         run: |
