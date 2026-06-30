@@ -93,6 +93,8 @@ jobs:
       - name: Install PyTorch Geometric (prebuilt wheels for CI)
         run: |
           python -m pip install --upgrade pip
+          # Ensure PyTorch is available for torch-scatter build
+          pip install -f https://download.pytorch.org/whl/cpu/torch_stable.html "torch==2.0.1+cpu"
           # PyG requires several compiled extension wheels that must match the torch build.
           # Use the official PyG wheel index for the matching torch+cpu build to avoid building from source.
           PYG_INDEX="https://data.pyg.org/whl/torch-2.0.1+cpu.html"
