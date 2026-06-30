@@ -3,11 +3,13 @@ Unit tests for FraudTransactionGenerator (LSTM-based adversarial sequence genera
 Covers: output shape, tanh output range, noise sampling, variable batch sizes,
 deterministic behaviour with fixed seeds, and gradient flow.
 """
+
 import pytest
 import numpy as np
 
 try:
     import torch
+
     HAS_TORCH = True
 except ImportError:
     HAS_TORCH = False
@@ -19,6 +21,7 @@ pytestmark = requires_torch  # All tests in this file require torch
 @pytest.fixture
 def generator():
     from src.models.generator_lstm import FraudTransactionGenerator
+
     return FraudTransactionGenerator(
         noise_dim=32,
         hidden_dim=64,
@@ -35,9 +38,11 @@ class TestFraudTransactionGeneratorShape:
         batch_size = 8
         noise = generator.sample_noise(batch_size)
         out = generator(noise)
-        assert out.shape == (batch_size, generator.sequence_length, generator.feature_dim), (
-            f"Expected ({batch_size}, {generator.sequence_length}, {generator.feature_dim}), got {out.shape}"
-        )
+        assert out.shape == (
+            batch_size,
+            generator.sequence_length,
+            generator.feature_dim,
+        ), f"Expected ({batch_size}, {generator.sequence_length}, {generator.feature_dim}), got {out.shape}"
 
     def test_sample_noise_shape(self, generator):
         """sample_noise must return (batch_size, sequence_length, noise_dim)."""
@@ -80,7 +85,9 @@ class TestFraudTransactionGeneratorValues:
         noise2 = generator.sample_noise(batch_size=4)
         out1 = generator(noise1)
         out2 = generator(noise2)
-        assert not torch.equal(out1, out2), "Different noise must produce different outputs"
+        assert not torch.equal(
+            out1, out2
+        ), "Different noise must produce different outputs"
 
     def test_deterministic_with_fixed_seed(self, generator):
         """Same noise tensor must produce identical output (generator is deterministic given noise)."""
@@ -117,6 +124,7 @@ class TestFraudTransactionGeneratorConfig:
     def test_custom_dimensions(self):
         """Generator should respect custom noise_dim, hidden_dim, feature_dim."""
         from src.models.generator_lstm import FraudTransactionGenerator
+
         gen = FraudTransactionGenerator(
             noise_dim=16, hidden_dim=32, sequence_length=3, feature_dim=10, num_layers=1
         )
@@ -127,6 +135,7 @@ class TestFraudTransactionGeneratorConfig:
     def test_default_dimensions_match_project_spec(self):
         """Default feature_dim=345 matches the GNN input size (339 Vesta + 6 extras)."""
         from src.models.generator_lstm import FraudTransactionGenerator
+
         gen = FraudTransactionGenerator()
         assert gen.feature_dim == 345
         assert gen.noise_dim == 64

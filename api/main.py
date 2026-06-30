@@ -93,15 +93,15 @@ def load_production_artifacts():
         # Seed reference distribution stats for drift monitoring.
         # In production these would be loaded from a pre-computed artifact;
         # here we initialise with the IEEE-CIS training baseline approximation.
-        _REFERENCE_STATS = {
-            f"V{i}": {"mean": 0.0, "std": 1.0} for i in range(339)
-        }
-        _REFERENCE_STATS.update({
-            "TransactionAmt": {"mean": 130.0, "std": 400.0},
-            "C1": {"mean": 1.0, "std": 2.0},
-            "C2": {"mean": 1.0, "std": 2.0},
-            "D1": {"mean": 10.0, "std": 50.0},
-        })
+        _REFERENCE_STATS = {f"V{i}": {"mean": 0.0, "std": 1.0} for i in range(339)}
+        _REFERENCE_STATS.update(
+            {
+                "TransactionAmt": {"mean": 130.0, "std": 400.0},
+                "C1": {"mean": 1.0, "std": 2.0},
+                "C2": {"mean": 1.0, "std": 2.0},
+                "D1": {"mean": 10.0, "std": 50.0},
+            }
+        )
 
         logger.info("Calibrated Fraud Predictor runtime established in memory.")
         logger.info(f"Configured DECISION_THRESHOLD: {DECISION_THRESHOLD}")
@@ -237,7 +237,10 @@ async def check_drift():
         if not _REFERENCE_STATS:
             return JSONResponse(
                 status_code=503,
-                content={"status": "unavailable", "message": "Reference stats not initialised. Model may not be loaded."},
+                content={
+                    "status": "unavailable",
+                    "message": "Reference stats not initialised. Model may not be loaded.",
+                },
             )
 
         # Build a synthetic production batch centred on reference stats.
@@ -245,14 +248,16 @@ async def check_drift():
         rng = np.random.default_rng(seed=int(time.time()) % 1000)
         n_samples = 200
         feature_names = list(_REFERENCE_STATS.keys())
-        live_batch = np.column_stack([
-            rng.normal(
-                loc=_REFERENCE_STATS[feat]["mean"],
-                scale=max(_REFERENCE_STATS[feat]["std"], 1e-6),
-                size=n_samples,
-            )
-            for feat in feature_names
-        ])
+        live_batch = np.column_stack(
+            [
+                rng.normal(
+                    loc=_REFERENCE_STATS[feat]["mean"],
+                    scale=max(_REFERENCE_STATS[feat]["std"], 1e-6),
+                    size=n_samples,
+                )
+                for feat in feature_names
+            ]
+        )
 
         drift_report = drift_detector.check_drift(live_batch, feature_names)
         return {"status": "success", "drift_report": drift_report}

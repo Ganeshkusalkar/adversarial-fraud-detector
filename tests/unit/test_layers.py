@@ -4,12 +4,14 @@ Expanded unit tests for GNN model components:
   - FraudGNN discriminator (src/models/discriminator_gnn.py)
   - FraudTransactionGenerator LSTM (src/models/generator_lstm.py)
 """
+
 import pytest
 import numpy as np
 
 try:
     import torch
     import torch.nn as nn
+
     HAS_TORCH = True
 except ImportError:
     HAS_TORCH = False
@@ -22,6 +24,7 @@ requires_torch = pytest.mark.skipif(not HAS_TORCH, reason="PyTorch not installed
 # ===========================================================================
 # GraphSAGELayer Tests
 # ===========================================================================
+
 
 class TestGraphSAGELayer:
 
@@ -81,12 +84,14 @@ class TestGraphSAGELayer:
 # FraudGNN Discriminator Tests
 # ===========================================================================
 
+
 @requires_torch
 class TestFraudGNN:
 
     @pytest.fixture(autouse=True)
     def setup(self):
         from src.models.discriminator_gnn import FraudGNN
+
         self.FraudGNN = FraudGNN
         self.in_channels = 16
         self.hidden = 32
@@ -104,7 +109,10 @@ class TestFraudGNN:
         model.eval()
         x, edge_index = self._make_graph()
         logits = model(x, edge_index)
-        assert logits.shape == (x.shape[0], 2), f"Expected ({x.shape[0]}, 2), got {logits.shape}"
+        assert logits.shape == (
+            x.shape[0],
+            2,
+        ), f"Expected ({x.shape[0]}, 2), got {logits.shape}"
 
     def test_fraud_proba_range(self):
         """predict_fraud_proba() must return values in [0, 1]."""
@@ -112,7 +120,9 @@ class TestFraudGNN:
         x, edge_index = self._make_graph()
         proba = model.predict_fraud_proba(x, edge_index)
         assert proba.shape == (x.shape[0],)
-        assert (proba >= 0.0).all() and (proba <= 1.0).all(), "Probabilities must be in [0, 1]"
+        assert (proba >= 0.0).all() and (
+            proba <= 1.0
+        ).all(), "Probabilities must be in [0, 1]"
 
     def test_classify_returns_booleans(self):
         """classify() must return a boolean tensor."""
@@ -125,7 +135,9 @@ class TestFraudGNN:
     def test_custom_threshold_respected(self):
         """Setting threshold=0.0 should flag all nodes as fraud."""
         model = self.FraudGNN(
-            in_channels=self.in_channels, hidden_channels=self.hidden, decision_threshold=0.0
+            in_channels=self.in_channels,
+            hidden_channels=self.hidden,
+            decision_threshold=0.0,
         )
         x, edge_index = self._make_graph()
         predictions = model.classify(x, edge_index)
@@ -134,7 +146,9 @@ class TestFraudGNN:
     def test_threshold_1_0_no_fraud(self):
         """Setting threshold=1.0 should flag nothing as fraud (prob is never exactly 1.0)."""
         model = self.FraudGNN(
-            in_channels=self.in_channels, hidden_channels=self.hidden, decision_threshold=1.0
+            in_channels=self.in_channels,
+            hidden_channels=self.hidden,
+            decision_threshold=1.0,
         )
         x, edge_index = self._make_graph()
         predictions = model.classify(x, edge_index)
@@ -165,18 +179,25 @@ class TestFraudGNN:
         edge_index = torch.tensor([[0, 1, 3, 4], [1, 2, 4, 5]], dtype=torch.long)
         batch = torch.tensor([0, 0, 0, 1, 1, 1])
         logits = model(x, edge_index, batch=batch)
-        assert logits.shape == (2, 2), f"Expected (2, 2) with batched pooling, got {logits.shape}"
+        assert logits.shape == (
+            2,
+            2,
+        ), f"Expected (2, 2) with batched pooling, got {logits.shape}"
 
     def test_dropout_active_in_train_mode(self):
         """
         In training mode with dropout, two identical forward passes should differ.
         (This can rarely be equal by chance, but is overwhelmingly reliable in practice.)
         """
-        model = self.FraudGNN(in_channels=self.in_channels, hidden_channels=self.hidden, dropout=0.5)
+        model = self.FraudGNN(
+            in_channels=self.in_channels, hidden_channels=self.hidden, dropout=0.5
+        )
         model.train()
         torch.manual_seed(0)
         x = torch.randn(10, self.in_channels)
         edge_index = torch.tensor([[0, 1, 2, 3], [1, 2, 3, 4]], dtype=torch.long)
         out1 = model(x, edge_index)
         out2 = model(x, edge_index)
-        assert not torch.equal(out1, out2), "Dropout should make training-mode outputs stochastic"
+        assert not torch.equal(
+            out1, out2
+        ), "Dropout should make training-mode outputs stochastic"

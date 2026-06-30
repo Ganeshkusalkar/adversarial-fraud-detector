@@ -14,6 +14,7 @@ Covers:
   - Rate limit headers present
   - Correlation-ID header propagated
 """
+
 import pytest
 import numpy as np
 from unittest.mock import patch, MagicMock
@@ -25,6 +26,7 @@ from fastapi.testclient import TestClient
 try:
     import api.main as api_module
     from api.main import app
+
     HAS_APP = True
 except Exception:
     HAS_APP = False
@@ -39,6 +41,7 @@ TEST_API_KEY = "test-secret-key-integration"
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="module")
 def client():
@@ -84,6 +87,7 @@ def _auth_header(key=TEST_API_KEY):
 # Health Endpoint (public — no auth required)
 # ===========================================================================
 
+
 @skip_if_no_app
 class TestHealthEndpoint:
 
@@ -110,15 +114,16 @@ class TestHealthEndpoint:
 # Predict Endpoint — Authentication
 # ===========================================================================
 
+
 @skip_if_no_app
 class TestPredictAuthentication:
 
     def test_missing_api_key_returns_403(self, client, valid_payload):
         """No X-API-Key header → 403 Forbidden."""
         response = client.post("/api/v1/predict", json=valid_payload)
-        assert response.status_code == 403, (
-            f"Expected 403 without API key, got {response.status_code}"
-        )
+        assert (
+            response.status_code == 403
+        ), f"Expected 403 without API key, got {response.status_code}"
 
     def test_wrong_api_key_returns_403(self, client, valid_payload):
         """Invalid API key → 403 Forbidden."""
@@ -136,14 +141,15 @@ class TestPredictAuthentication:
             json=valid_payload,
             headers=_auth_header(),
         )
-        assert response.status_code != 403, (
-            f"Valid API key should not return 403, got {response.status_code}: {response.text}"
-        )
+        assert (
+            response.status_code != 403
+        ), f"Valid API key should not return 403, got {response.status_code}: {response.text}"
 
 
 # ===========================================================================
 # Predict Endpoint — Response Schema
 # ===========================================================================
+
 
 @skip_if_no_app
 class TestPredictResponseSchema:
@@ -213,6 +219,7 @@ class TestPredictResponseSchema:
 # Predict Endpoint — Validation Errors
 # ===========================================================================
 
+
 @skip_if_no_app
 class TestPredictValidation:
 
@@ -231,7 +238,9 @@ class TestPredictValidation:
             json=payload,
             headers=_auth_header(),
         )
-        assert response.status_code == 422, "Negative amount should return 422 Unprocessable Entity"
+        assert (
+            response.status_code == 422
+        ), "Negative amount should return 422 Unprocessable Entity"
 
     def test_missing_required_field_rejected(self, client):
         payload = {"TransactionID": "TXN-INCOMPLETE"}  # missing everything
@@ -247,18 +256,20 @@ class TestPredictValidation:
 # Middleware & Headers
 # ===========================================================================
 
+
 @skip_if_no_app
 class TestMiddleware:
 
     def test_correlation_id_header_present(self, client):
         """Every response must carry X-Correlation-ID from the middleware."""
         response = client.get("/health")
-        assert "x-correlation-id" in response.headers, (
-            "X-Correlation-ID middleware must attach header to every response"
-        )
+        assert (
+            "x-correlation-id" in response.headers
+        ), "X-Correlation-ID middleware must attach header to every response"
 
     def test_correlation_id_is_uuid_format(self, client):
         import uuid
+
         response = client.get("/health")
         corr_id = response.headers.get("x-correlation-id", "")
         try:
@@ -270,6 +281,7 @@ class TestMiddleware:
 # ===========================================================================
 # Drift Endpoint (open — no auth)
 # ===========================================================================
+
 
 @skip_if_no_app
 class TestDriftEndpoint:

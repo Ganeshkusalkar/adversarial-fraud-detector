@@ -3,6 +3,7 @@ Expanded unit tests for XGBoostBaseline model.
 Covers: initialization, training, evaluation metrics, predict_proba shape,
 feature importance availability, and model serialization / reload.
 """
+
 import os
 import tempfile
 import pytest
@@ -11,6 +12,7 @@ import pandas as pd
 
 try:
     import xgboost as xgb
+
     HAS_XGB = True
 except ImportError:
     HAS_XGB = False
@@ -23,6 +25,7 @@ pytestmark = pytest.mark.skipif(not HAS_XGB, reason="xgboost not installed")
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_dataset(n=200, n_features=10, seed=42):
     """Return a small labelled DataFrame for fast tests."""
@@ -40,11 +43,14 @@ def _make_dataset(n=200, n_features=10, seed=42):
 # Initialization
 # ---------------------------------------------------------------------------
 
+
 class TestXGBoostInitialization:
     def test_default_initialization(self):
         model = XGBoostBaseline(random_state=42)
         assert model.random_state == 42
-        assert model.model is not None, "XGBoost model object should be set when xgb is installed"
+        assert (
+            model.model is not None
+        ), "XGBoost model object should be set when xgb is installed"
 
     def test_custom_random_state(self):
         model = XGBoostBaseline(random_state=7)
@@ -58,6 +64,7 @@ class TestXGBoostInitialization:
 # ---------------------------------------------------------------------------
 # Training
 # ---------------------------------------------------------------------------
+
 
 class TestXGBoostTraining:
     def test_train_completes_without_error(self):
@@ -84,6 +91,7 @@ class TestXGBoostTraining:
 # Prediction
 # ---------------------------------------------------------------------------
 
+
 class TestXGBoostPrediction:
     @pytest.fixture(autouse=True)
     def trained_model(self):
@@ -94,7 +102,10 @@ class TestXGBoostPrediction:
 
     def test_predict_proba_shape(self):
         probs = self.model.model.predict_proba(self.X)
-        assert probs.shape == (len(self.X), 2), "predict_proba must return (n_samples, 2)"
+        assert probs.shape == (
+            len(self.X),
+            2,
+        ), "predict_proba must return (n_samples, 2)"
 
     def test_predict_proba_sums_to_one(self):
         probs = self.model.model.predict_proba(self.X)
@@ -113,6 +124,7 @@ class TestXGBoostPrediction:
 # ---------------------------------------------------------------------------
 # Evaluation Metrics
 # ---------------------------------------------------------------------------
+
 
 class TestXGBoostEvaluation:
     @pytest.fixture(autouse=True)
@@ -147,6 +159,7 @@ class TestXGBoostEvaluation:
 # Feature Importance
 # ---------------------------------------------------------------------------
 
+
 class TestXGBoostFeatureImportance:
     def test_feature_importance_available_after_training(self):
         model = XGBoostBaseline(random_state=0)
@@ -166,12 +179,15 @@ class TestXGBoostFeatureImportance:
         X, y = _make_dataset()
         model.train(X, y)
         total = model.model.feature_importances_.sum()
-        assert abs(total - 1.0) < 0.01, f"Feature importances should sum to ~1.0, got {total}"
+        assert (
+            abs(total - 1.0) < 0.01
+        ), f"Feature importances should sum to ~1.0, got {total}"
 
 
 # ---------------------------------------------------------------------------
 # Serialization
 # ---------------------------------------------------------------------------
+
 
 class TestXGBoostSerialization:
     def test_model_save_and_reload(self):

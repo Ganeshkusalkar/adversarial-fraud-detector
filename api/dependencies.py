@@ -53,6 +53,7 @@ def verify_api_key(api_key: Optional[str] = Security(_API_KEY_HEADER)) -> str:
         )
     return api_key
 
+
 # Fallback for ONNX Runtime
 try:
     import onnxruntime as ort

@@ -3,16 +3,17 @@ Expanded unit tests for DataDriftDetector and calculate_psi utility.
 Covers: PSI edge cases (identical distributions, extreme drift), multi-feature
 drift, missing column handling, threshold boundary conditions, and return schema.
 """
+
 import pytest
 import numpy as np
 import pandas as pd
 
 from src.monitoring.drift_detection import DataDriftDetector, calculate_psi
 
-
 # ===========================================================================
 # PSI Utility Tests
 # ===========================================================================
+
 
 class TestCalculatePSI:
 
@@ -29,7 +30,9 @@ class TestCalculatePSI:
         expected = np.random.normal(0, 1, 1000)
         actual = np.random.normal(10, 1, 1000)  # 10-sigma shift
         psi = calculate_psi(expected, actual)
-        assert psi > 0.2, f"Heavily shifted distributions must yield PSI > 0.2, got {psi:.4f}"
+        assert (
+            psi > 0.2
+        ), f"Heavily shifted distributions must yield PSI > 0.2, got {psi:.4f}"
 
     def test_psi_is_nonnegative(self):
         """PSI is always >= 0 by definition."""
@@ -53,6 +56,7 @@ class TestCalculatePSI:
 # ===========================================================================
 # DataDriftDetector Tests
 # ===========================================================================
+
 
 class TestDriftDetectorNoDrift:
 
@@ -92,7 +96,9 @@ class TestDriftDetectorWithDrift:
         assert results["features"]["feat1"]["psi_value"] > 0.2
         assert results["features"]["feat1"]["is_drifting"]
 
-    def test_drift_partial_features(self, reference_dataframe, production_dataframe_with_drift):
+    def test_drift_partial_features(
+        self, reference_dataframe, production_dataframe_with_drift
+    ):
         """Only drifted features should be flagged; stable ones stay clean."""
         detector = DataDriftDetector(reference_dataframe, psi_threshold=0.2)
         results = detector.check_drift(production_dataframe_with_drift)
@@ -106,10 +112,12 @@ class TestDriftDetectorEdgeCases:
 
     def test_missing_column_in_production_data_is_skipped(self):
         """If a training feature is absent from prod data, it's silently skipped."""
-        ref = pd.DataFrame({
-            "feat_present": np.random.normal(0, 1, 200),
-            "feat_absent": np.random.normal(0, 1, 200),
-        })
+        ref = pd.DataFrame(
+            {
+                "feat_present": np.random.normal(0, 1, 200),
+                "feat_absent": np.random.normal(0, 1, 200),
+            }
+        )
         prod = pd.DataFrame({"feat_present": np.random.normal(0, 1, 100)})
         detector = DataDriftDetector(ref)
         results = detector.check_drift(prod)
@@ -118,14 +126,18 @@ class TestDriftDetectorEdgeCases:
 
     def test_non_numeric_columns_ignored(self):
         """Categorical columns in reference data must be ignored by the detector."""
-        ref = pd.DataFrame({
-            "numeric": np.random.normal(0, 1, 200),
-            "category": ["A", "B"] * 100,
-        })
-        prod = pd.DataFrame({
-            "numeric": np.random.normal(0, 1, 100),
-            "category": ["A", "B"] * 50,
-        })
+        ref = pd.DataFrame(
+            {
+                "numeric": np.random.normal(0, 1, 200),
+                "category": ["A", "B"] * 100,
+            }
+        )
+        prod = pd.DataFrame(
+            {
+                "numeric": np.random.normal(0, 1, 100),
+                "category": ["A", "B"] * 50,
+            }
+        )
         detector = DataDriftDetector(ref)
         results = detector.check_drift(prod)
         assert "numeric" in results["features"]
@@ -149,14 +161,20 @@ class TestDriftDetectorEdgeCases:
     def test_multifeature_drift_detected_field(self):
         """drift_detected=True if ANY feature drifts."""
         np.random.seed(0)
-        ref = pd.DataFrame({
-            "stable": np.random.normal(0, 1, 500),
-            "drifting": np.random.normal(0, 1, 500),
-        })
-        prod = pd.DataFrame({
-            "stable": np.random.normal(0, 1, 200),
-            "drifting": np.random.normal(8, 1, 200),  # extreme shift
-        })
+        ref = pd.DataFrame(
+            {
+                "stable": np.random.normal(0, 1, 500),
+                "drifting": np.random.normal(0, 1, 500),
+            }
+        )
+        prod = pd.DataFrame(
+            {
+                "stable": np.random.normal(0, 1, 200),
+                "drifting": np.random.normal(8, 1, 200),  # extreme shift
+            }
+        )
         detector = DataDriftDetector(ref, psi_threshold=0.2)
         results = detector.check_drift(prod)
-        assert results["drift_detected"], "drift_detected must be True when any feature drifts"
+        assert results[
+            "drift_detected"
+        ], "drift_detected must be True when any feature drifts"

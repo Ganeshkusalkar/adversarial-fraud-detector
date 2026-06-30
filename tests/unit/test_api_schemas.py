@@ -3,15 +3,16 @@ Unit tests for Pydantic API schemas:
   - TransactionInput validation (field types, ranges, defaults)
   - FraudPredictionResponse construction and field types
 """
+
 import pytest
 from pydantic import ValidationError
 
 from api.schemas import TransactionInput, FraudPredictionResponse
 
-
 # ===========================================================================
 # TransactionInput Validation
 # ===========================================================================
+
 
 class TestTransactionInputSchema:
 
@@ -101,6 +102,7 @@ class TestTransactionInputSchema:
 # FraudPredictionResponse Construction
 # ===========================================================================
 
+
 class TestFraudPredictionResponseSchema:
 
     def _valid_response(self, **overrides) -> dict:
@@ -153,6 +155,7 @@ class TestFraudPredictionResponseSchema:
     def test_json_serializable(self):
         """Response must be JSON-serializable (required for FastAPI returns)."""
         import json
+
         resp = FraudPredictionResponse(**self._valid_response())
         json_str = resp.model_dump_json()
         parsed = json.loads(json_str)

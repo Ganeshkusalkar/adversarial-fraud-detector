@@ -2,6 +2,7 @@
 Shared pytest fixtures for the Adversarial Fraud Detector test suite.
 All fixtures defined here are automatically available to every test file.
 """
+
 import pytest
 import numpy as np
 import pandas as pd
@@ -12,6 +13,7 @@ from unittest.mock import MagicMock, patch
 # ---------------------------------------------------------------------------
 try:
     import torch
+
     HAS_TORCH = True
 except ImportError:
     HAS_TORCH = False
@@ -24,6 +26,7 @@ requires_torch = pytest.mark.skipif(
 # ---------------------------------------------------------------------------
 # Transaction payload fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def mock_transaction_payload() -> dict:
@@ -59,42 +62,50 @@ def mock_fraud_payload(mock_transaction_payload) -> dict:
 # DataFrame fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def reference_dataframe() -> pd.DataFrame:
     """Small reference DataFrame for drift detection tests."""
     np.random.seed(42)
-    return pd.DataFrame({
-        "amount": np.random.normal(100, 20, 500),
-        "velocity": np.random.normal(1.0, 0.2, 500),
-        "C1": np.random.normal(2.0, 0.5, 500),
-    })
+    return pd.DataFrame(
+        {
+            "amount": np.random.normal(100, 20, 500),
+            "velocity": np.random.normal(1.0, 0.2, 500),
+            "C1": np.random.normal(2.0, 0.5, 500),
+        }
+    )
 
 
 @pytest.fixture
 def production_dataframe_no_drift(reference_dataframe) -> pd.DataFrame:
     """Production batch drawn from the same distribution — no drift expected."""
     np.random.seed(100)
-    return pd.DataFrame({
-        "amount": np.random.normal(100, 20, 200),
-        "velocity": np.random.normal(1.0, 0.2, 200),
-        "C1": np.random.normal(2.0, 0.5, 200),
-    })
+    return pd.DataFrame(
+        {
+            "amount": np.random.normal(100, 20, 200),
+            "velocity": np.random.normal(1.0, 0.2, 200),
+            "C1": np.random.normal(2.0, 0.5, 200),
+        }
+    )
 
 
 @pytest.fixture
 def production_dataframe_with_drift() -> pd.DataFrame:
     """Production batch with severely shifted distributions — drift expected."""
     np.random.seed(200)
-    return pd.DataFrame({
-        "amount": np.random.normal(300, 80, 200),   # mean shifted 3x
-        "velocity": np.random.normal(5.0, 1.5, 200),  # mean shifted 5x
-        "C1": np.random.normal(2.0, 0.5, 200),        # unchanged
-    })
+    return pd.DataFrame(
+        {
+            "amount": np.random.normal(300, 80, 200),  # mean shifted 3x
+            "velocity": np.random.normal(5.0, 1.5, 200),  # mean shifted 5x
+            "C1": np.random.normal(2.0, 0.5, 200),  # unchanged
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
 # Mock model predictor fixture
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def mock_predictor():
@@ -119,6 +130,7 @@ def mock_fraud_predictor():
 # GNN graph fixtures (requires torch)
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def simple_graph_tensors():
     """
@@ -128,8 +140,7 @@ def simple_graph_tensors():
     if HAS_TORCH:
         x = torch.randn(4, 16)
         edge_index = torch.tensor(
-            [[0, 1, 1, 2, 2, 3],
-             [1, 0, 2, 1, 3, 2]], dtype=torch.long
+            [[0, 1, 1, 2, 2, 3], [1, 0, 2, 1, 3, 2]], dtype=torch.long
         )
         return x, edge_index
     else:

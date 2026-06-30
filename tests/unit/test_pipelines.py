@@ -3,12 +3,14 @@ Expanded unit tests for TransactionGraphBuilder.
 Covers: node count correctness, feature matrix dimensions, label alignment,
 edge generation, isolated-node fallback, and cross-card risk edges.
 """
+
 import pytest
 import numpy as np
 import pandas as pd
 
 try:
     import torch
+
     HAS_TORCH = True
 except ImportError:
     HAS_TORCH = False
@@ -22,6 +24,7 @@ pytestmark = requires_torch
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _base_df(n_cards=3, seed=42):
     """
@@ -56,15 +59,18 @@ def _config(extra_features=None):
 # Initialization
 # ---------------------------------------------------------------------------
 
+
 class TestGraphBuilderInit:
     def test_init_with_empty_node_features(self):
         from src.graph.graph_builder import TransactionGraphBuilder
+
         builder = TransactionGraphBuilder({"features": {"gnn_node_features": []}})
         assert builder is not None
         assert builder.node_feature_cols == []
 
     def test_init_with_custom_features(self):
         from src.graph.graph_builder import TransactionGraphBuilder
+
         builder = TransactionGraphBuilder(_config(["TransactionAmt"]))
         assert "TransactionAmt" in builder.node_feature_cols
 
@@ -73,9 +79,11 @@ class TestGraphBuilderInit:
 # Node Count & Label Alignment
 # ---------------------------------------------------------------------------
 
+
 class TestGraphBuilderNodes:
     def test_node_count_equals_unique_cards(self):
         from src.graph.graph_builder import TransactionGraphBuilder
+
         df = _base_df(n_cards=5)
         builder = TransactionGraphBuilder(_config())
         graph = builder.build_inductive_graph(df)
@@ -83,6 +91,7 @@ class TestGraphBuilderNodes:
 
     def test_node_labels_shape_matches_nodes(self):
         from src.graph.graph_builder import TransactionGraphBuilder
+
         df = _base_df(n_cards=4)
         builder = TransactionGraphBuilder(_config())
         graph = builder.build_inductive_graph(df)
@@ -91,16 +100,20 @@ class TestGraphBuilderNodes:
     def test_fraud_label_propagated_to_card_node(self):
         """A card with at least one fraud txn must have label=1."""
         from src.graph.graph_builder import TransactionGraphBuilder
+
         df = _base_df(n_cards=3)
         # card 3 is flagged as fraud
         builder = TransactionGraphBuilder(_config())
         graph = builder.build_inductive_graph(df)
         assert graph.y.max().item() == 1, "At least one fraud node must have label=1"
-        assert graph.y.min().item() == 0, "At least one legitimate node must have label=0"
+        assert (
+            graph.y.min().item() == 0
+        ), "At least one legitimate node must have label=0"
 
     def test_all_legitimate_labels(self):
         """All-legitimate transactions → all labels = 0."""
         from src.graph.graph_builder import TransactionGraphBuilder
+
         df = _base_df(n_cards=3)
         df["isFraud"] = 0
         builder = TransactionGraphBuilder(_config())
@@ -112,10 +125,12 @@ class TestGraphBuilderNodes:
 # Feature Matrix Dimensions
 # ---------------------------------------------------------------------------
 
+
 class TestGraphBuilderFeatureMatrix:
     def test_feature_matrix_shape(self):
         """339 V-features + 4 manual + 2 engineered = 345 columns."""
         from src.graph.graph_builder import TransactionGraphBuilder
+
         df = _base_df(n_cards=3)
         builder = TransactionGraphBuilder(_config())
         graph = builder.build_inductive_graph(df)
@@ -123,6 +138,7 @@ class TestGraphBuilderFeatureMatrix:
 
     def test_feature_matrix_float32(self):
         from src.graph.graph_builder import TransactionGraphBuilder
+
         df = _base_df(n_cards=3)
         builder = TransactionGraphBuilder(_config())
         graph = builder.build_inductive_graph(df)
@@ -130,20 +146,25 @@ class TestGraphBuilderFeatureMatrix:
 
     def test_feature_matrix_no_nan(self):
         from src.graph.graph_builder import TransactionGraphBuilder
+
         df = _base_df(n_cards=4)
         builder = TransactionGraphBuilder(_config())
         graph = builder.build_inductive_graph(df)
-        assert not torch.isnan(graph.x).any(), "Feature matrix must not contain NaN values"
+        assert not torch.isnan(
+            graph.x
+        ).any(), "Feature matrix must not contain NaN values"
 
 
 # ---------------------------------------------------------------------------
 # Edge Generation
 # ---------------------------------------------------------------------------
 
+
 class TestGraphBuilderEdges:
     def test_single_transaction_per_card_no_temporal_edges(self):
         """Cards with 1 transaction each produce no temporal edges."""
         from src.graph.graph_builder import TransactionGraphBuilder
+
         df = _base_df(n_cards=3)  # each card has 1 txn
         builder = TransactionGraphBuilder(_config())
         graph = builder.build_inductive_graph(df)
@@ -154,15 +175,20 @@ class TestGraphBuilderEdges:
     def test_multi_transaction_card_generates_temporal_edges(self):
         """A card with 3 transactions generates 2 temporal edges (self-loops)."""
         from src.graph.graph_builder import TransactionGraphBuilder
-        df = pd.DataFrame({
-            "card1": [1, 1, 1],
-            "TransactionAmt": [10.0, 20.0, 30.0],
-            "C1": [1, 2, 3], "C2": [0, 1, 0], "D1": [5, 10, 15],
-            "isFraud": [0, 0, 1],
-            "TransactionDT": [1, 2, 3],
-            "card1_count_cumulative": [1, 2, 3],
-            "amount_to_mean_ratio": [0.5, 1.0, 1.5],
-        })
+
+        df = pd.DataFrame(
+            {
+                "card1": [1, 1, 1],
+                "TransactionAmt": [10.0, 20.0, 30.0],
+                "C1": [1, 2, 3],
+                "C2": [0, 1, 0],
+                "D1": [5, 10, 15],
+                "isFraud": [0, 0, 1],
+                "TransactionDT": [1, 2, 3],
+                "card1_count_cumulative": [1, 2, 3],
+                "amount_to_mean_ratio": [0.5, 1.0, 1.5],
+            }
+        )
         for i in range(339):
             df[f"V{i}"] = np.random.randn(3)
         builder = TransactionGraphBuilder(_config())
@@ -174,16 +200,25 @@ class TestGraphBuilderEdges:
     def test_cross_card_edges_from_shared_email(self):
         """Cards sharing P_emaildomain must be connected with bidirectional edges."""
         from src.graph.graph_builder import TransactionGraphBuilder
-        df = pd.DataFrame({
-            "card1": [10, 20, 30],
-            "TransactionAmt": [50.0, 100.0, 200.0],
-            "C1": [1, 2, 3], "C2": [0, 1, 0], "D1": [5, 10, 15],
-            "isFraud": [0, 0, 1],
-            "TransactionDT": [1, 2, 3],
-            "card1_count_cumulative": [1, 1, 1],
-            "amount_to_mean_ratio": [1.0, 1.0, 1.0],
-            "P_emaildomain": ["fraud@ring.com", "fraud@ring.com", "other@domain.com"],
-        })
+
+        df = pd.DataFrame(
+            {
+                "card1": [10, 20, 30],
+                "TransactionAmt": [50.0, 100.0, 200.0],
+                "C1": [1, 2, 3],
+                "C2": [0, 1, 0],
+                "D1": [5, 10, 15],
+                "isFraud": [0, 0, 1],
+                "TransactionDT": [1, 2, 3],
+                "card1_count_cumulative": [1, 1, 1],
+                "amount_to_mean_ratio": [1.0, 1.0, 1.0],
+                "P_emaildomain": [
+                    "fraud@ring.com",
+                    "fraud@ring.com",
+                    "other@domain.com",
+                ],
+            }
+        )
         for i in range(339):
             df[f"V{i}"] = np.random.randn(3)
         builder = TransactionGraphBuilder(_config())
@@ -194,6 +229,7 @@ class TestGraphBuilderEdges:
     def test_edge_index_shape_valid(self):
         """edge_index must always be shape [2, E]."""
         from src.graph.graph_builder import TransactionGraphBuilder
+
         df = _base_df(n_cards=5)
         builder = TransactionGraphBuilder(_config())
         graph = builder.build_inductive_graph(df)
@@ -202,6 +238,7 @@ class TestGraphBuilderEdges:
 
     def test_edge_index_dtype_long(self):
         from src.graph.graph_builder import TransactionGraphBuilder
+
         df = _base_df(n_cards=3)
         builder = TransactionGraphBuilder(_config())
         graph = builder.build_inductive_graph(df)
