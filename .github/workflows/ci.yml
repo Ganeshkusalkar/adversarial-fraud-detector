@@ -60,6 +60,12 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
+      - name: Install PyTorch (CPU) - FIRST
+        run: |
+          python -m pip install --upgrade pip
+          # Install PyTorch FIRST, before any packages that depend on it
+          pip install -f https://download.pytorch.org/whl/cpu/torch_stable.html "torch==2.0.1+cpu"
+
       - name: Install lightweight CI dependencies
         run: |
           python -m pip install --upgrade pip
@@ -83,12 +89,6 @@ jobs:
             httpx \
             pytest==7.4.2 \
             pytest-cov==4.1.0
-
-      - name: Install PyTorch (CPU)
-        run: |
-          python -m pip install --upgrade pip
-          # Install a CPU wheel pinned to the repo's expected torch version
-          pip install -f https://download.pytorch.org/whl/cpu/torch_stable.html "torch==2.0.1+cpu"
 
       - name: Install PyTorch Geometric (prebuilt wheels for CI)
         run: |
@@ -213,4 +213,3 @@ jobs:
         run: |
           echo "Deploy step — configure secrets and replace this with your deploy command."
           echo "Image: fraud-detector:${{ github.sha }}"
-          
