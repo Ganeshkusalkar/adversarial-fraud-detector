@@ -1,6 +1,5 @@
 import random
 import numpy as np
-import torch
 from src.utils.logger import setup_logger
 
 logger = setup_logger("SystemInit")
@@ -10,6 +9,7 @@ def seed_everything(seed: int = 42) -> None:
     """
     Forces complete determinism across all underlying matrix backends.
     """
+    import torch
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
