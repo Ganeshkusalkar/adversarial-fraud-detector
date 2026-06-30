@@ -60,7 +60,7 @@ jobs:
 
       - name: Clear pip cache and upgrade core packages
         run: |
-          pip cache purge
+          pip cache purge || true
           python -m pip install --upgrade pip setuptools wheel
           pip install --upgrade packaging
 
@@ -72,7 +72,7 @@ jobs:
 
       - name: Install PyTorch CPU
         run: |
-          pip install --no-cache-dir torch==2.0.1 --index-url https://download.pytorch.org/whl/cpu
+          pip install --no-cache-dir torch==2.0.1+cpu --index-url https://download.pytorch.org/whl/cpu
 
       - name: Install core dependencies
         run: |
@@ -101,7 +101,7 @@ jobs:
           pip install --upgrade setuptools wheel
           PYG_INDEX="https://data.pyg.org/whl/torch-2.0.1+cpu.html"
           pip install --no-cache-dir \
-            --only-binary :all: \
+            --only-binary torch-scatter,torch-sparse,torch-cluster,torch-spline-conv \
             -f https://download.pytorch.org/whl/cpu/torch_stable.html \
             --extra-index-url ${PYG_INDEX} \
             torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric==2.3.1
