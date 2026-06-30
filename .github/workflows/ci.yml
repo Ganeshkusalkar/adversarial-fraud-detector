@@ -99,12 +99,14 @@ jobs:
       - name: Install PyTorch Geometric (prebuilt wheels only)
         run: |
           pip install --upgrade setuptools wheel
-          PYG_INDEX="https://data.pyg.org/whl/torch-2.0.1+cpu.html"
+          PYTORCH_WHL="https://download.pytorch.org/whl/cpu/torch_stable.html"
+          PYG_WHL="https://data.pyg.org/whl/torch-2.0.1+cpu.html"
           pip install --no-cache-dir \
-            --only-binary torch-scatter,torch-sparse,torch-cluster,torch-spline-conv \
-            -f https://download.pytorch.org/whl/cpu/torch_stable.html \
-            --extra-index-url ${PYG_INDEX} \
-            torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric==2.3.1
+            --find-links ${PYTORCH_WHL} \
+            --find-links ${PYG_WHL} \
+            --only-binary=:all: \
+            torch-scatter torch-sparse torch-cluster torch-spline-conv
+          pip install --no-cache-dir torch-geometric==2.3.1
 
       - name: Run unit tests with coverage
         continue-on-error: false
