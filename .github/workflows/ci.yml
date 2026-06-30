@@ -90,6 +90,10 @@ jobs:
           # Install CPU-only PyTorch wheel
           pip install -f https://download.pytorch.org/whl/cpu/torch_stable.html torch
 
+      - name: Install PyTorch Geometric
+        run: |
+          pip install torch-geometric==2.3.1
+
       - name: Run unit tests with coverage
         run: |
           python -m pytest tests/unit/ \
