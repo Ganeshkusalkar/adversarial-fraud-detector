@@ -13,10 +13,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-COPY requirements.txt .
+# By default CI builds should avoid installing very large ML packages (torch, torch-geometric)
+# Use the build-arg INSTALL_HEAVY=true to install the full requirements (for local/dev builds).
+ARG INSTALL_HEAVY="false"
 
-# Install dependencies into virtualenv
-RUN pip install --no-cache-dir -r requirements.txt
+# Include both full and runtime requirements in the image build context
+COPY requirements.txt .
+COPY requirements-runtime.txt .
+
+# Install dependencies into virtualenv (choose runtime or full list based on build arg)
+RUN if [ "$INSTALL_HEAVY" = "true" ]; then \
+      pip install --no-cache-dir -r requirements.txt ; \
+    else \
+      pip install --no-cache-dir -r requirements-runtime.txt ; \
+    fi
 
 # ==========================================================
 # STAGE 2: Lightweight Runtime Execution Environment

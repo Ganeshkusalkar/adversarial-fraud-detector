@@ -1,0 +1,43 @@
+# Runtime requirements used by CI Docker builds and lightweight production image
+# Excludes heavy training-time packages like torch and torch-geometric which are
+# not needed for serving or the CI health-check container.
+
+# Core Web & API Layer
+fastapi==0.103.1
+uvicorn==0.23.2
+pydantic==2.3.0
+requests==2.31.0
+httpx==0.24.1
+
+# Scientific & Data Structures
+numpy==1.24.3
+pandas==2.0.3
+pyyaml==6.0.1
+
+# Graph Management (runtime only)
+networkx==3.1
+neo4j==5.12.0
+
+# Model Runtime (ONNX runtime instead of full PyTorch)
+onnxruntime==1.18.0
+onnx==1.14.1
+
+# Evaluation & Metrics
+scikit-learn==1.3.0
+xgboost==2.0.0
+shap==0.42.1
+
+# Production Hardening
+prometheus-client==0.17.1
+python-json-logger==2.0.7
+slowapi==0.1.8
+
+# Code Quality & Testing (CI only)
+pytest==7.4.2
+pytest-cov==4.1.0
+black==23.9.1
+flake8==6.1.0
+isort==5.12.0
+
+# Load testing
+locust==2.16.1
