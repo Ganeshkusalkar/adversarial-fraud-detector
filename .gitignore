@@ -14,7 +14,8 @@ __pycache__/
 htmlcov/
 
 # Dataset files (avoid pushing gigabytes of Kaggle data to GitHub)
-data/
+data/*
+!data/.gitkeep
 *.csv
 *.xlsx
 
@@ -28,8 +29,14 @@ config/*_config.yaml
 .idea/
 
 # Large model artifacts (checkpoints)
-artifacts/checkpoints/
+artifacts/
 *.pt
 *.pth
 *.onnx
 *.pkl
+
+# Local temporary or unnecessary files
+*.zip
+*.docx
+extracted_doc.txt
+adversarial-fraud-detector/

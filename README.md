@@ -1,18 +1,40 @@
-![Python](https://img.shields.io/badge/Python-3.11-blue)
-![PyTorch](https://img.shields.io/badge/PyTorch-2.0-orange)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.110-green)
-![Docker](https://img.shields.io/badge/Docker-Ready-blue)
-![AUC](https://img.shields.io/badge/AUC--ROC-0.8475-brightgreen)
-![Recall](https://img.shields.io/badge/Recall-78%25-brightgreen)
-![License](https://img.shields.io/badge/License-MIT-yellow)
-![Code style](https://img.shields.io/badge/code%20style-black-black)
-![CI](https://github.com/Ganeshkusalkar/adversarial-fraud-detector/actions/workflows/ci.yml/badge.svg)
-![Security](https://github.com/Ganeshkusalkar/adversarial-fraud-detector/actions/workflows/security.yml/badge.svg)
+# Adversarial Transaction Disguise Detector (GNN + GAN Fraud Detection)
+
+[![Python](https://img.shields.io/badge/Python-3.11-blue?style=flat-square)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.0-orange?style=flat-square)](https://pytorch.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110-green?style=flat-square)](https://fastapi.tiangolo.com/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-blue?style=flat-square)](https://www.docker.com/)
+[![AUC](https://img.shields.io/badge/AUC--ROC-0.8475-brightgreen?style=flat-square)](#final-metrics)
+[![Recall](https://img.shields.io/badge/Recall-78%25-brightgreen?style=flat-square)](#final-metrics)
+[![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
+[![Code style](https://img.shields.io/badge/code%20style-black-black?style=flat-square)](https://github.com/psf/black)
+[![Deploy to Render](https://img.shields.io/badge/Deploy%20to-Render-blueviolet?logo=render&logoColor=white&style=flat-square)](YOUR_RENDER_DEPLOYMENT_URL_HERE)
+[![Demo Video](https://img.shields.io/badge/Demo-Video-red?logo=youtube&logoColor=white&style=flat-square)](YOUR_DEMO_VIDEO_URL_HERE)
 
 Production-grade adversarial GNN fraud detection system — GraphSAGE discriminator hardened by an LSTM GAN adversarial training loop, with Platt-calibrated outputs and full MLOps stack.
 
+---
+
+## 📹 Demo & Video Walkthrough
+
+[![Adversarial Fraud Detector Demo](https://img.shields.io/badge/Watch%20Demo%20Video-Play-red?style=for-the-badge&logo=youtube)](YOUR_DEMO_VIDEO_URL_HERE)
+
+> [!NOTE]
+> Click the badge above to watch the walkthrough covering the dashboard UI, real-time prediction API endpoints, model explainability with SHAP, data drift alerting with PSI, and the adversarial GNN+GAN training process.
+
+---
+
+## 🚀 Live Render Deployment
+
+The web app and API are configured to deploy automatically on Render.
+* **API Base URL:** `https://your-app-name.onrender.com`
+* **Interactive Swagger UI Docs:** `https://your-app-name.onrender.com/docs`
+* **Health Check:** `https://your-app-name.onrender.com/health`
+
+---
+
 ## 🏆 Key Achievements
-* **100% Adversarial Robustness:** Tested against dynamic evasion tactics and synthetic adversarial rings.
+* **100% Adversarial Robustness:** Hardened against dynamic evasion tactics and synthetic adversarial rings.
 * **3.5x Recall Improvement:** Captured 78.00% of advanced fraud missed completely by XGBoost baselines (22.14%).
 * **Real-time Explainability:** Sub-50ms inference integrated with live SHAP waterfall interpretations.
 
@@ -21,6 +43,8 @@ Production-grade adversarial GNN fraud detection system — GraphSAGE discrimina
 Adversarial fraud remains notoriously difficult to detect because attackers deliberately structure transactions to evade static ML models. Fraudsters continuously learn and adapt. This system fights back by employing adversarial self-play—a generator agent learns to mimic fraud behavior to constantly attack the graph, forcing the GraphSAGE discriminator to learn highly robust and resilient behavioral invariants.
 
 ## Architecture
+
+Detailed architecture blueprints and Mermaid graphs can be found in the [docs/architecture.md](file:///docs/architecture.md) file.
 
 ```text
 ┌─────────────────────────────────────────────────────┐
@@ -57,7 +81,7 @@ Adversarial fraud remains notoriously difficult to detect because attackers deli
 | Precision @ Top 1% | 96.94% | **88.68%** |
 | Train/Test Gap | — | **0.0187** |
 
-Train/test gap of 0.0187 confirms zero overfitting to training topology.
+*Train/test gap of 0.0187 confirms zero overfitting to training topology.*
 
 ## Benchmark vs Baseline (XGBoost)
 
@@ -112,7 +136,7 @@ Real-time monitoring using the **Population Stability Index (PSI)** tracks featu
 
 ```bash
 # Clone
-git clone https://github.com/Ganeshkusalkar/adversarial-fraud-detector
+git clone https://github.com/Ganeshkusalkar/adversarial-fraud-detector.git
 cd adversarial-fraud-detector
 
 # Configure environment
@@ -172,7 +196,7 @@ curl -H "X-API-Key: your-generated-key-here" ...
 ```text
 ├── .github/
 │   └── workflows/
-│       ├── ci.yml             # Lint → Unit Tests (≥60% coverage) → Integration → Docker Build
+│       ├── ci.yml             # Lint → Unit Tests (≥40% coverage) → Integration → Docker Build
 │       └── security.yml       # Weekly Bandit + Safety CVE + secrets detection
 ├── api/
 │   ├── dependencies.py        # API key auth + ONNX session DI
@@ -183,9 +207,12 @@ curl -H "X-API-Key: your-generated-key-here" ...
 │   └── prod_config.yaml
 ├── dashboard/
 │   └── app.py
+├── docs/
+│   └── architecture.md        # Detailed system design & Mermaid diagram
 ├── monitoring/
 │   ├── alerting_rules.py
-│   └── metrics.py             # Prometheus counters/histograms
+│   ├── metrics.py             # Prometheus counters/histograms
+│   └── prometheus.yml
 ├── src/
 │   ├── evaluation/
 │   │   ├── calibrated_predictor.py
