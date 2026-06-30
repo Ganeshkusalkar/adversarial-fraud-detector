@@ -43,3 +43,4 @@ locust==2.16.1
 # Additional Dependencies
 shap==0.42.1
 xgboost==2.0.0
+httpx==0.24.1
