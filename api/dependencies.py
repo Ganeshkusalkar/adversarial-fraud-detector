@@ -1,9 +1,57 @@
 import logging
 import os
 from pathlib import Path
-from typing import Generator
+from typing import Generator, Optional
+
+from fastapi import HTTPException, Security, status
+from fastapi.security import APIKeyHeader
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# API Key Authentication
+# ---------------------------------------------------------------------------
+
+_API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+def _get_valid_keys() -> set:
+    """
+    Reads the comma-separated list of valid API keys from the API_KEYS env var.
+    Falls back to a development key if the env var is not set, but logs a warning.
+    """
+    raw = os.getenv("API_KEYS", "")
+    if not raw:
+        logger.warning(
+            "API_KEYS env var is not set. "
+            "All API key checks will FAIL. "
+            "Set API_KEYS=<your-key> in .env or environment."
+        )
+        return set()
+    keys = {k.strip() for k in raw.split(",") if k.strip()}
+    logger.info(f"API key authentication active: {len(keys)} key(s) configured.")
+    return keys
+
+
+def verify_api_key(api_key: Optional[str] = Security(_API_KEY_HEADER)) -> str:
+    """
+    FastAPI dependency that validates the X-API-Key request header.
+
+    Usage:
+        @app.post("/protected")
+        async def route(key: str = Depends(verify_api_key)):
+            ...
+
+    Raises:
+        HTTPException(403): when the key is missing or not in the allowed set.
+    """
+    valid_keys = _get_valid_keys()
+    if not api_key or api_key not in valid_keys:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid or missing API key. Provide a valid key in the X-API-Key header.",
+        )
+    return api_key
 
 # Fallback for ONNX Runtime
 try:

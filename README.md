@@ -6,16 +6,10 @@
 ![Recall](https://img.shields.io/badge/Recall-78%25-brightgreen)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 ![Code style](https://img.shields.io/badge/code%20style-black-black)
-![Tests](https://img.shields.io/badge/tests-pytest-blue)
-![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)
 ![CI](https://github.com/Ganeshkusalkar/adversarial-fraud-detector/actions/workflows/ci.yml/badge.svg)
+![Security](https://github.com/Ganeshkusalkar/adversarial-fraud-detector/actions/workflows/security.yml/badge.svg)
 
 Production-grade adversarial GNN fraud detection system — GraphSAGE discriminator hardened by an LSTM GAN adversarial training loop, with Platt-calibrated outputs and full MLOps stack.
-
-> 🚀 **Live Demo:** [Deployed on Render / AWS](https://your-deployment-link.com)
-> 🎥 **[Watch the 3-minute Loom Demo Video](https://youtube.com/placeholder-demo-link)**
-
-![Dashboard Screenshot](https://via.placeholder.com/1000x500?text=Insert+Dashboard+Screenshot+Here)
 
 ## 🏆 Key Achievements
 * **100% Adversarial Robustness:** Tested against dynamic evasion tactics and synthetic adversarial rings.
@@ -79,13 +73,12 @@ To validate the necessity of the Graph Neural Network and Adversarial Training, 
 ## 🧠 SHAP Explainability & MLOps
 
 ### Feature Interpretability
-To meet strict compliance requirements in finance, the model integrates SHAP (SHapley Additive exPlanations) values to explain every individual prediction in real time.
-![SHAP Explanation Example](https://via.placeholder.com/800x400?text=Insert+SHAP+Screenshot+Here)
+To meet strict compliance requirements in finance, the model integrates SHAP (SHapley Additive exPlanations) values to explain every individual prediction in real time via the `/api/v1/explain` endpoint.
+
 *Example output shows that `C2 (Velocity)` and `TransactionAmt` overwhelmingly contributed to the fraud score, allowing human analysts to rapidly review flagged transactions.*
 
 ### MLOps & Data Drift Monitoring
-Real-time monitoring using the **Population Stability Index (PSI)** tracks feature distributions of streaming transactions against the training baseline. If adversaries attempt a sudden coordinate shift, the system alerts analysts immediately.
-![Drift Monitoring Alert](https://via.placeholder.com/800x200?text=Insert+MLOps+Drift+Screenshot+Here)
+Real-time monitoring using the **Population Stability Index (PSI)** tracks feature distributions of streaming transactions against the training baseline. If adversaries attempt a sudden coordinate shift, the system alerts analysts immediately via the `/monitoring/drift` endpoint.
 
 ## Engineering Decisions
 
@@ -122,77 +115,112 @@ Real-time monitoring using the **Population Stability Index (PSI)** tracks featu
 git clone https://github.com/Ganeshkusalkar/adversarial-fraud-detector
 cd adversarial-fraud-detector
 
+# Configure environment
+cp .env.example .env
+# Edit .env and set API_KEYS=<your-secret-key>
+
 # Run full stack
 docker-compose up -d --build
 
-# Health check
+# Health check (no auth required)
 curl http://localhost:8000/health
 
-# Score a transaction
+# Score a transaction (X-API-Key header required)
 curl -X POST http://localhost:8000/api/v1/predict \
   -H "Content-Type: application/json" \
-  -d '{"TransactionID": "T001", "TransactionAmt": 150.0, 
-       "vesta_features": [0.1]*339, "C1": 1, "C2": 0, "D1": 5}'
+  -H "X-API-Key: your-secret-key" \
+  -d '{"TransactionID": "T001", "card1": 14204, "TransactionAmt": 117.50,
+       "TransactionDT": 86400, "ProductCD": "W", "card4": "visa",
+       "card6": "credit", "vesta_features": [0.0],
+       "C1": 1, "C2": 0, "D1": 5}'
 
 # View Prometheus metrics
 open http://localhost:9090
 
-# View Grafana dashboard  
+# View Grafana dashboard
 open http://localhost:3000  # admin/fraudapp123
 
 # Run load test
 locust --config=tests/load/locust.conf
 ```
 
+## 🔐 Authentication
+
+All prediction and explanation endpoints require an `X-API-Key` header.
+
+```bash
+# Generate a strong key
+python -c "import secrets; print(secrets.token_hex(32))"
+
+# Add to your .env file
+API_KEYS=your-generated-key-here
+
+# Include in every request
+curl -H "X-API-Key: your-generated-key-here" ...
+```
+
+| Endpoint | Auth Required | Rate Limit |
+|---|---|---|
+| `GET /health` | ❌ No | — |
+| `GET /metrics` | ❌ No | — |
+| `GET /monitoring/drift` | ❌ No | — |
+| `POST /api/v1/predict` | ✅ Yes | 100/min |
+| `POST /api/v1/explain` | ✅ Yes | 10/min |
+
 ## Project Structure
 
 ```text
+├── .github/
+│   └── workflows/
+│       ├── ci.yml             # Lint → Unit Tests (≥60% coverage) → Integration → Docker Build
+│       └── security.yml       # Weekly Bandit + Safety CVE + secrets detection
 ├── api/
-│   ├── routes/
-│   │   ├── predict.py
-│   │   └── monitoring.py
-│   ├── dependencies.py
-│   ├── main.py
-│   └── schemas.py
+│   ├── dependencies.py        # API key auth + ONNX session DI
+│   ├── main.py                # FastAPI app, routes, startup
+│   └── schemas.py             # Pydantic request/response models
 ├── config/
 │   ├── base_config.yaml
-│   ├── dev_config.yaml
 │   └── prod_config.yaml
 ├── dashboard/
-│   ├── components/
-│   ├── app.py
-│   └── mock_stream.py
+│   └── app.py
+├── monitoring/
+│   ├── alerting_rules.py
+│   └── metrics.py             # Prometheus counters/histograms
 ├── src/
 │   ├── evaluation/
-│   │   ├── calibrate_probabilities.py
-│   │   ├── calibrate_threshold.py
 │   │   ├── calibrated_predictor.py
+│   │   ├── calibrate_probabilities.py
 │   │   ├── metrics.py
-│   │   └── walk_forward.py
+│   │   └── shap_explainer.py
 │   ├── graph/
-│   │   ├── graph_builder.py
-│   │   └── neo4j_client.py
+│   │   └── graph_builder.py
 │   ├── models/
-│   │   ├── discriminator_gnn.py
-│   │   ├── generator_lstm.py
-│   │   └── layers.py
+│   │   ├── discriminator_gnn.py   # 3-hop GraphSAGE + residual skip
+│   │   ├── generator_lstm.py      # LSTM adversarial generator
+│   │   └── layers.py              # Custom GraphSAGE message-passing layer
+│   ├── monitoring/
+│   │   └── drift_detection.py     # PSI-based feature drift detector
 │   ├── pipelines/
-│   │   ├── base_loader.py
-│   │   ├── elliptic_pipeline.py
-│   │   ├── ieee_pipeline.py
-│   │   └── paysim_pipeline.py
-│   ├── training/
-│   │   ├── engine.py
-│   │   └── losses.py
-│   ├── utils/
-│   └── main.py
+│   │   └── ieee_pipeline.py
+│   └── training/
+│       └── engine.py
 ├── tests/
+│   ├── conftest.py                # Shared fixtures (payloads, DataFrames, mocks)
 │   ├── integration/
-│   │   └── test_pipeline.py
+│   │   └── test_pipeline.py       # FastAPI TestClient HTTP-level tests
+│   ├── load/
+│   │   └── locustfile.py          # Locust load test scenarios
 │   └── unit/
-│       └── test_layers.py
-├── Dockerfile
+│       ├── test_api_schemas.py    # Pydantic validation tests
+│       ├── test_generator.py      # LSTM generator shape/gradient tests
+│       ├── test_layers.py         # GraphSAGE layer + FraudGNN discriminator tests
+│       ├── test_models.py         # XGBoost baseline tests
+│       ├── test_monitoring.py     # PSI drift detection tests
+│       └── test_pipelines.py      # Graph builder node/edge/feature tests
+├── .env.example
 ├── docker-compose.yml
+├── Dockerfile
+├── pytest.ini
 └── requirements.txt
 ```
 

@@ -1,8 +1,29 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional
 
 
 class TransactionInput(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "TransactionID": "TXN-20240101-0001",
+                    "card1": 14204,
+                    "TransactionAmt": 117.50,
+                    "TransactionDT": 86400,
+                    "ProductCD": "W",
+                    "card4": "visa",
+                    "card6": "credit",
+                    "P_emaildomain": "gmail.com",
+                    "R_emaildomain": "gmail.com",
+                    "C1": 1.0,
+                    "C2": 1.0,
+                    "D1": 14.0,
+                    "vesta_features": [0.0] * 339,
+                }
+            ]
+        }
+    )
     TransactionID: str = Field(
         ..., description="Unique transaction identity token identifier."
     )
@@ -53,6 +74,18 @@ class TransactionInput(BaseModel):
 
 
 class FraudPredictionResponse(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "transaction_id": "TXN-20240101-0001",
+                    "fraud_score": 0.0731,
+                    "is_fraudulent": False,
+                    "processing_latency_ms": 12.4,
+                }
+            ]
+        }
+    )
     transaction_id: str
     fraud_score: float = Field(
         ...,

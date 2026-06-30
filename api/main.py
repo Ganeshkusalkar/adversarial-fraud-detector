@@ -9,6 +9,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from api.schemas import TransactionInput, FraudPredictionResponse
+from api.dependencies import verify_api_key
 from src.utils.logger import setup_logger
 from src.evaluation.calibrated_predictor import CalibratedFraudPredictor
 from monitoring.metrics import (
@@ -44,11 +45,16 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 PREDICTOR = None
+SHAP_EXPLAINER = None
 MODEL_PATH = os.getenv("ONNX_MODEL_PATH", "artifacts/production/fraud_model.onnx")
 SCALER_PATH = os.getenv("SCALER_PATH", "artifacts/production/scaler.pkl")
 CALIBRATOR_PATH = os.getenv(
     "CALIBRATOR_PATH", "artifacts/production/prob_calibrator.pkl"
 )
+
+# Reference distribution stats stored at startup for drift monitoring
+# Shape: dict mapping feature_name -> {"mean": float, "std": float}
+_REFERENCE_STATS: dict = {}
 
 # Metrics Endpoint
 from prometheus_client import make_asgi_app
@@ -71,7 +77,7 @@ from src.evaluation.shap_explainer import FraudSHAPExplainer
 
 @app.on_event("startup")
 def load_production_artifacts():
-    global PREDICTOR, SHAP_EXPLAINER
+    global PREDICTOR, SHAP_EXPLAINER, _REFERENCE_STATS
     try:
         logger.info(
             f"Loading calibrated execution runtime graph configurations from target path: {MODEL_PATH}"
@@ -83,6 +89,19 @@ def load_production_artifacts():
         )
         # Initialize SHAP explainer
         SHAP_EXPLAINER = FraudSHAPExplainer(PREDICTOR)
+
+        # Seed reference distribution stats for drift monitoring.
+        # In production these would be loaded from a pre-computed artifact;
+        # here we initialise with the IEEE-CIS training baseline approximation.
+        _REFERENCE_STATS = {
+            f"V{i}": {"mean": 0.0, "std": 1.0} for i in range(339)
+        }
+        _REFERENCE_STATS.update({
+            "TransactionAmt": {"mean": 130.0, "std": 400.0},
+            "C1": {"mean": 1.0, "std": 2.0},
+            "C2": {"mean": 1.0, "std": 2.0},
+            "D1": {"mean": 10.0, "std": 50.0},
+        })
 
         logger.info("Calibrated Fraud Predictor runtime established in memory.")
         logger.info(f"Configured DECISION_THRESHOLD: {DECISION_THRESHOLD}")
@@ -114,6 +133,7 @@ async def predict_transaction_risk(
     request: Request,
     payload: TransactionInput,
     predictor: CalibratedFraudPredictor = Depends(get_predictor),
+    _api_key: str = Depends(verify_api_key),
 ):
     start_time = time.time()
     correlation_id = getattr(request.state, "correlation_id", "unknown")
@@ -174,6 +194,7 @@ async def explain_transaction(
     request: Request,
     payload: TransactionInput,
     explainer: FraudSHAPExplainer = Depends(get_explainer),
+    _api_key: str = Depends(verify_api_key),
 ):
     try:
         sanitized_vesta = np.clip(payload.vesta_features, -10.0, 10.0).tolist()
@@ -202,18 +223,38 @@ async def explain_transaction(
 
 @app.get("/monitoring/drift")
 async def check_drift():
+    """
+    Checks feature distribution drift against the training baseline.
+
+    Uses stored reference statistics (mean/std per feature) seeded at startup
+    from the IEEE-CIS training distribution. Compares against a small synthetic
+    production batch generated around the reference distribution.
+
+    In production this endpoint would consume a rolling buffer of recent
+    live transactions instead of a synthetic batch.
+    """
     try:
-        # Just use some random mock batch for API test
-        mock_live_batch = np.random.randn(100, 345)
-        feature_names = [f"V{i}" for i in range(339)] + [
-            "TransactionAmt",
-            "C1",
-            "C2",
-            "D1",
-            "node_degree",
-            "node_centrality",
-        ]
-        drift_report = drift_detector.check_drift(mock_live_batch, feature_names)
+        if not _REFERENCE_STATS:
+            return JSONResponse(
+                status_code=503,
+                content={"status": "unavailable", "message": "Reference stats not initialised. Model may not be loaded."},
+            )
+
+        # Build a synthetic production batch centred on reference stats.
+        # Small Gaussian perturbation simulates normal operational variance.
+        rng = np.random.default_rng(seed=int(time.time()) % 1000)
+        n_samples = 200
+        feature_names = list(_REFERENCE_STATS.keys())
+        live_batch = np.column_stack([
+            rng.normal(
+                loc=_REFERENCE_STATS[feat]["mean"],
+                scale=max(_REFERENCE_STATS[feat]["std"], 1e-6),
+                size=n_samples,
+            )
+            for feat in feature_names
+        ])
+
+        drift_report = drift_detector.check_drift(live_batch, feature_names)
         return {"status": "success", "drift_report": drift_report}
     except Exception as e:
         return JSONResponse(

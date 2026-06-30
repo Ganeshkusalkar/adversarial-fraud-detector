@@ -2,90 +2,169 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
   pull_request:
     branches: [ main ]
 
 jobs:
+  # -------------------------------------------------------------------------
+  # Job 1: Lint & Format
+  # -------------------------------------------------------------------------
   lint:
+    name: Lint & Format Check
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - name: Set up Python 3.11
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.11"
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install flake8 black bandit
-    - name: Run Black
-      run: black --check src/ api/ tests/ || true
-    - name: Run Flake8
-      run: flake8 src/ api/ tests/ --max-line-length=150 --extend-ignore=E501,E402,F401,E203,F541,W293,E302
-    - name: Run Bandit Security Scan
-      run: bandit -r src/ api/ -ll -ii || true
+      - uses: actions/checkout@v4
 
-  test:
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install lint dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black isort bandit
+
+      - name: Check formatting with Black (fail on violations)
+        run: black --check src/ api/ tests/
+
+      - name: Check import order with isort
+        run: isort --check-only src/ api/ tests/ --profile black
+
+      - name: Run Flake8
+        run: |
+          flake8 src/ api/ tests/ \
+            --max-line-length=150 \
+            --extend-ignore=E501,E402,F401,E203,F541,W293,E302,W291
+
+      - name: Run Bandit Security Scan
+        run: bandit -r src/ api/ -ll -ii || true
+
+  # -------------------------------------------------------------------------
+  # Job 2: Unit Tests with Coverage Gate
+  # -------------------------------------------------------------------------
+  unit-tests:
+    name: Unit Tests (Coverage ≥ 60%)
     needs: lint
     runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - name: Set up Python 3.11
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.11"
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-    - name: Test with pytest
-      env:
-        PYTHONPATH: ${{ github.workspace }}
-      run: |
-        python -m pytest tests/unit/ -v --tb=short
-        python -m pytest tests/integration/ -v --tb=short
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      API_KEYS: "ci-test-key-not-for-production"
 
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run unit tests with coverage
+        run: |
+          python -m pytest tests/unit/ \
+            -v --tb=short \
+            --cov=src --cov=api \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-fail-under=60
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-test-coverage
+          path: coverage.xml
+          retention-days: 14
+
+  # -------------------------------------------------------------------------
+  # Job 3: Integration Tests
+  # -------------------------------------------------------------------------
+  integration-tests:
+    name: Integration Tests
+    needs: unit-tests
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      API_KEYS: "ci-test-key-not-for-production"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run integration tests
+        run: |
+          python -m pytest tests/integration/ \
+            -v --tb=short \
+            -m "not slow"
+
+  # -------------------------------------------------------------------------
+  # Job 4: Docker Build & Health Check
+  # -------------------------------------------------------------------------
   docker-build:
-    needs: test
+    name: Docker Build & Health Check
+    needs: integration-tests
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - name: Build docker image
-      run: docker build -t fraud-detector:${GITHUB_SHA} .
-    - name: Health Check (with retries & diagnostics)
-      run: |
-        set -o pipefail
-        # Run the container with an adjusted seccomp profile to allow onnxruntime to mark executable stack
-        docker run -d --security-opt seccomp=unconfined --name fraud-api -p 8000:8000 fraud-detector:${GITHUB_SHA}
-        CONTAINER=$(docker ps -q -l)
-        echo "Started container: $CONTAINER"
+      - uses: actions/checkout@v4
 
-        # Poll the health endpoint for up to 60s (12 x 5s)
-        for i in $(seq 1 12); do
-          if curl -sSf http://localhost:8000/health > /dev/null 2>&1; then
-            echo "Health check passed"
-            exit 0
-          else
-            echo "Waiting for app to be ready... (attempt $i/12)"
+      - name: Build Docker image
+        run: docker build -t fraud-detector:${{ github.sha }} .
+
+      - name: Start container and health check
+        run: |
+          docker run -d \
+            --security-opt seccomp=unconfined \
+            --name fraud-api \
+            -p 8000:8000 \
+            -e API_KEYS="ci-health-check-key" \
+            fraud-detector:${{ github.sha }}
+
+          # Poll /health for up to 60 seconds (12 x 5s)
+          for i in $(seq 1 12); do
+            if curl -sSf http://localhost:8000/health > /dev/null 2>&1; then
+              echo "✅ Health check passed on attempt $i"
+              exit 0
+            fi
+            echo "Waiting for app... (attempt $i/12)"
             sleep 5
-          fi
-        done
+          done
 
-        echo "Health check failed after retries — printing container logs and exiting with failure"
-        echo "==== CONTAINER LOGS ===="
-        docker logs fraud-api || true
-        echo "==== END CONTAINER LOGS ===="
-        docker ps -a
-        exit 1
+          echo "❌ Health check failed after 60s — printing container logs:"
+          docker logs fraud-api || true
+          docker ps -a
+          exit 1
 
-  deploy-mock:
+  # -------------------------------------------------------------------------
+  # Job 5: Deploy (replace echo stubs with real deployment commands)
+  # -------------------------------------------------------------------------
+  deploy:
+    name: Deploy to Production
     needs: docker-build
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
-    - name: Mock AWS ECR Push & ECS Deploy
-      run: |
-        echo "Successfully authenticated with AWS ECR"
-        echo "Pushing image fraud-detector:${GITHUB_SHA} to ECR..."
-        echo "Updating ECS service..."
-        echo "Deployment to production successful!"
+      - name: Deploy via Render / Railway / AWS ECS
+        run: |
+          # TODO: Replace with your actual deployment mechanism, e.g.:
+          # - curl -X POST ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+          # - aws ecs update-service --cluster prod --service fraud-api --force-new-deployment
+          echo "Deploy step — configure secrets and replace this with your deploy command."
+          echo "Image: fraud-detector:${{ github.sha }}"

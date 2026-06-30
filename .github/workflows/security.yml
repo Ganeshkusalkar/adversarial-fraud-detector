@@ -1,0 +1,93 @@
+name: Security Scan
+
+on:
+  schedule:
+    # Every Monday at 09:00 UTC
+    - cron: "0 9 * * 1"
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # Allow manual trigger from GitHub Actions UI
+
+jobs:
+  # -------------------------------------------------------------------------
+  # Bandit — SAST for Python source code
+  # -------------------------------------------------------------------------
+  bandit-sast:
+    name: Bandit SAST (Source Code Security)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Bandit
+        run: pip install bandit[toml]
+
+      - name: Run Bandit (medium+ severity, high confidence)
+        run: |
+          bandit -r src/ api/ \
+            --severity-level medium \
+            --confidence-level high \
+            --format json \
+            --output bandit-report.json || true
+
+      - name: Upload Bandit Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-security-report
+          path: bandit-report.json
+          retention-days: 30
+
+  # -------------------------------------------------------------------------
+  # Safety — Known CVE check on requirements.txt
+  # -------------------------------------------------------------------------
+  safety-cve-check:
+    name: Safety CVE Dependency Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Safety
+        run: pip install safety
+
+      - name: Run Safety CVE check
+        run: |
+          safety check \
+            --file requirements.txt \
+            --output json \
+            --save-as safety-report.json || true
+
+      - name: Upload Safety Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: safety-cve-report
+          path: safety-report.json
+          retention-days: 30
+
+  # -------------------------------------------------------------------------
+  # Secrets Detection — prevent accidental credential leaks
+  # -------------------------------------------------------------------------
+  secrets-detection:
+    name: Secret Detection (detect-secrets)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install detect-secrets
+        run: pip install detect-secrets
+
+      - name: Scan for accidentally committed secrets
+        run: |
+          detect-secrets scan \
+            --baseline .secrets.baseline \
+            --exclude-files '.*\.zip$' \
+            --exclude-files 'venv/.*' \
+            --exclude-files '\.git/.*' || true
