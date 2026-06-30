@@ -11,8 +11,13 @@ import pandas as pd
 # Skip entire module at collection time if torch / torch_geometric are absent.
 # This prevents a hard ImportError from graph_builder.py which has top-level
 # `import torch` and `from torch_geometric.data import Data`.
-torch = pytest.importorskip("torch", reason="PyTorch not installed — skipping graph builder tests")
-pytest.importorskip("torch_geometric", reason="torch_geometric not installed — skipping graph builder tests")
+torch = pytest.importorskip(
+    "torch", reason="PyTorch not installed — skipping graph builder tests"
+)
+pytest.importorskip(
+    "torch_geometric",
+    reason="torch_geometric not installed — skipping graph builder tests",
+)
 
 
 # ---------------------------------------------------------------------------

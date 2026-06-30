@@ -17,9 +17,7 @@ def _get_valid_keys() -> set:
     """
     raw = os.getenv("API_KEYS", "")
     if not raw:
-        logger.warning(
-            "API_KEYS env var is not set. All API key checks will fail."
-        )
+        logger.warning("API_KEYS env var is not set. All API key checks will fail.")
         return set()
     keys = {k.strip() for k in raw.split(",") if k.strip()}
     logger.info(f"API key authentication active: {len(keys)} key(s) configured.")
@@ -41,6 +39,7 @@ def verify_api_key(api_key: Optional[str] = Security(_API_KEY_HEADER)) -> str:
 
 try:
     import onnxruntime as ort
+
     HAS_ONNX = True
 except ImportError:
     HAS_ONNX = False
@@ -78,6 +77,7 @@ class ONNXInferenceSession:
         if self.session is None:
             # Simulated inference logic: simple deterministic hashing for mock testing
             import numpy as np
+
             avg_val = float(np.mean(node_features)) if len(node_features) > 0 else 0.1
             prob = min(max(abs(avg_val), 0.0), 1.0)
             return prob
@@ -85,8 +85,9 @@ class ONNXInferenceSession:
         inputs = {"node_features": node_features, "edge_index": edge_index}
         outputs = self.session.run(None, inputs)
         logits = outputs[0]
-        
+
         import numpy as np
+
         exp_logits = np.exp(logits - np.max(logits, axis=-1, keepdims=True))
         probs = exp_logits / np.sum(exp_logits, axis=-1, keepdims=True)
         return float(probs[0, 1])

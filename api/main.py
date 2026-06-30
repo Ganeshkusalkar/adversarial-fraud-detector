@@ -91,7 +91,9 @@ def load_production_artifacts():
             }
         )
 
-        logger.info(f"Calibrated Fraud Predictor loaded. Threshold: {DECISION_THRESHOLD}")
+        logger.info(
+            f"Calibrated Fraud Predictor loaded. Threshold: {DECISION_THRESHOLD}"
+        )
     except Exception as e:
         logger.error(f"Failed to load production artifacts during startup: {str(e)}")
         PREDICTOR = None

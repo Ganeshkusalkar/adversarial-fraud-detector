@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 # PyTorch availability guard
 try:
     import torch
+
     HAS_TORCH = True
 except ImportError:
     HAS_TORCH = False
