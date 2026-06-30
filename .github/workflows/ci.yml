@@ -42,12 +42,6 @@ jobs:
 
   # -------------------------------------------------------------------------
   # Job 2: Unit Tests with Coverage Gate
-  #
-  # Strategy: install only the lightweight deps needed for unit tests.
-  # PyTorch + torch-geometric are multi-GB installs that cause CI timeouts.
-  # Tests that require torch are decorated with @requires_torch and
-  # will be skipped automatically when torch is absent.
-  # The coverage gate of 40% is achievable with the non-torch test subset.
   # -------------------------------------------------------------------------
   unit-tests:
     name: Unit Tests (Coverage ≥ 40%)
@@ -69,7 +63,7 @@ jobs:
       - name: Install lightweight CI dependencies
         run: |
           python -m pip install --upgrade pip
-          # Core API & data deps (no torch/torch-geometric — too heavy for CI)
+          # Core API & data deps
           pip install \
             fastapi==0.103.1 \
             uvicorn==0.23.2 \
@@ -93,7 +87,7 @@ jobs:
       - name: Install PyTorch (CPU)
         run: |
           python -m pip install --upgrade pip
-          # Install CPU-only PyTorch wheel (change or pin version if you need)
+          # Install CPU-only PyTorch wheel
           pip install -f https://download.pytorch.org/whl/cpu/torch_stable.html torch
 
       - name: Run unit tests with coverage
@@ -163,8 +157,6 @@ jobs:
 
   # -------------------------------------------------------------------------
   # Job 4: Docker Build & Health Check
-  # Build image and verify /health responds — ONNX model won't load
-  # (no artifact in repo) but the app must still start and return healthy.
   # -------------------------------------------------------------------------
   docker-build:
     name: Docker Build & Health Check
@@ -185,7 +177,6 @@ jobs:
             -e API_KEYS="ci-health-check-key" \
             fraud-detector:${{ github.sha }}
 
-          # Poll /health for up to 90 seconds (18 x 5s)
           for i in $(seq 1 18); do
             if curl -sSf http://localhost:8000/health > /dev/null 2>&1; then
               echo "✅ Health check passed on attempt $i"
@@ -211,8 +202,6 @@ jobs:
     steps:
       - name: Deploy via Render / Railway / AWS ECS
         run: |
-          # TODO: Replace with your actual deployment mechanism, e.g.:
-          # - curl -X POST ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
-          # - aws ecs update-service --cluster prod --service fraud-api --force-new-deployment
           echo "Deploy step — configure secrets and replace this with your deploy command."
           echo "Image: fraud-detector:${{ github.sha }}"
+          
