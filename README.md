@@ -17,7 +17,6 @@ Production-grade adversarial GNN fraud detection system — GraphSAGE discrimina
 
 ## 📹 Demo & Video Walkthrough
 
-[![Adversarial Fraud Detector Demo](https://img.shields.io/badge/Watch%20Demo%20Video-Play-red?style=for-the-badge&logo=youtube)](YOUR_DEMO_VIDEO_URL_HERE)
 
 > [!NOTE]
 > Click the badge above to watch the walkthrough covering the dashboard UI, real-time prediction API endpoints, model explainability with SHAP, data drift alerting with PSI, and the adversarial GNN+GAN training process.
