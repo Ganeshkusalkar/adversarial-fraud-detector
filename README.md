@@ -15,22 +15,10 @@ Production-grade adversarial GNN fraud detection system — GraphSAGE discrimina
 
 ---
 
-## 📹 Demo & Video Walkthrough
 
 
-> [!NOTE]
-> Click the badge above to watch the walkthrough covering the dashboard UI, real-time prediction API endpoints, model explainability with SHAP, data drift alerting with PSI, and the adversarial GNN+GAN training process.
 
----
 
-## 🚀 Live Render Deployment
-
-The web app and API are configured to deploy automatically on Render.
-* **API Base URL:** `https://your-app-name.onrender.com`
-* **Interactive Swagger UI Docs:** `https://your-app-name.onrender.com/docs`
-* **Health Check:** `https://your-app-name.onrender.com/health`
-
----
 
 ## 🏆 Key Achievements
 * **100% Adversarial Robustness:** Hardened against dynamic evasion tactics and synthetic adversarial rings.
