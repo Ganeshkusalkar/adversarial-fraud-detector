@@ -18,6 +18,8 @@ data/*
 !data/.gitkeep
 *.csv
 *.xlsx
+*.parquet
+*.npy
 
 # Local environment configs and secrets
 .env
@@ -28,15 +30,16 @@ config/*_config.yaml
 .vscode/
 .idea/
 
-# Large model artifacts (checkpoints)
-artifacts/
+# Large model checkpoints (keep production ONNX and scalers)
+artifacts/checkpoints/*.pt
 *.pt
 *.pth
-*.onnx
-*.pkl
+!artifacts/
+!artifacts/production/
+!artifacts/production/**
 
 # Local temporary or unnecessary files
 *.zip
-*.docx
-extracted_doc.txt
+runs.json
+scratch/
 adversarial-fraud-detector/

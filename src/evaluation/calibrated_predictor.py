@@ -48,23 +48,30 @@ class CalibratedFraudPredictor:
         with open(self.calibrator_path, "rb") as f:
             self.calibrator = pickle.load(f)
 
-    def predict(self, input_vector: np.ndarray, edge_index: np.ndarray) -> float:
+    def predict(
+        self,
+        input_vector: np.ndarray,
+        edge_index: np.ndarray,
+        target_idx: int = 0,
+    ) -> float:
         """
-        Runs the full inference pipeline and returns a calibrated probability.
+        Runs the full inference pipeline and returns a calibrated probability for target_idx.
+        Supports multi-node localized subgraphs.
         """
-        # 1. Scale
+        # 1. Scale node features
         scaled_vector = self.scaler.transform(input_vector).astype(np.float32)
 
         # 2. ONNX Inference
         onnx_inputs = {self.input_name: scaled_vector, self.edge_name: edge_index}
         raw_logits = self.session.run(None, onnx_inputs)[0]
 
-        # 3. Softmax to get uncalibrated probability
-        exp_logits = np.exp(raw_logits - np.max(raw_logits))
-        probabilities = exp_logits / exp_logits.sum(axis=-1)
-        raw_prob = float(probabilities[0][1])
+        # 3. Numerically stable softmax to get uncalibrated probability
+        shift_logits = raw_logits - np.max(raw_logits, axis=-1, keepdims=True)
+        exp_logits = np.exp(shift_logits)
+        probabilities = exp_logits / np.sum(exp_logits, axis=-1, keepdims=True)
+        raw_prob = float(probabilities[target_idx][1])
 
-        # 4. Calibrate!
+        # 4. Calibrate probability
         calibrated_prob_array = self.calibrator.predict_proba(np.array([[raw_prob]]))
         calibrated_prob = float(calibrated_prob_array[0][1])
 

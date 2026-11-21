@@ -75,6 +75,7 @@ class TransactionInput(BaseModel):
 
 class FraudPredictionResponse(BaseModel):
     model_config = ConfigDict(
+        protected_namespaces=(),
         json_schema_extra={
             "examples": [
                 {
@@ -82,6 +83,11 @@ class FraudPredictionResponse(BaseModel):
                     "fraud_score": 0.0731,
                     "is_fraudulent": False,
                     "processing_latency_ms": 12.4,
+                    "subgraph_nodes": 3,
+                    "subgraph_edges": 4,
+                    "fallback_used": False,
+                    "model_version": "v1.0.0-onnx",
+                    "decision_reason": "Low-risk structural transaction topology",
                 }
             ]
         }
@@ -99,9 +105,39 @@ class FraudPredictionResponse(BaseModel):
         ...,
         description="Internal system server inference latency tracking performance benchmark.",
     )
+    subgraph_nodes: int = Field(
+        default=1,
+        description="Total nodes in the localized k-hop neighborhood graph evaluated by the GNN.",
+    )
+    subgraph_edges: int = Field(
+        default=0,
+        description="Total topological edges evaluated during GraphSAGE message passing.",
+    )
+    fallback_used: bool = Field(
+        default=False,
+        description="Flag indicating if the circuit breaker fell back to the tabular risk engine.",
+    )
+    model_version: str = Field(
+        default="v1.0.0-onnx",
+        description="Semantic version string of the production model artifact.",
+    )
+    decision_reason: str = Field(
+        default="Normal transaction pattern",
+        description="Human-interpretable decision rationale for compliance review.",
+    )
+
+
+class SystemHealthResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+    status: str
+    model_version: str
+    graph_store: dict
+    circuit_breaker: dict
+    uptime_seconds: float
 
 
 class ABPredictionResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
     transaction_id: str
     ab_group: str = Field(..., description="A/B test group routed to: 'A' or 'B'.")
     model_used: str = Field(

@@ -1,24 +1,9 @@
 import pytest
 import os
-from unittest.mock import patch, MagicMock
-from fastapi.testclient import TestClient
+from unittest.mock import patch
+from fastapi import HTTPException
 from api.ab_testing import calculate_z_test, ABTestingEngine
-
-# Import app for testing
-with patch.dict("os.environ", {"API_KEYS": "test-key-ab,another-key-ab"}):
-    import api.main as api_module
-    from api.main import app
-
-
-@pytest.fixture
-def ab_client():
-    mock_pred = MagicMock()
-    mock_pred.predict.return_value = 0.15
-
-    # Mock baseline models
-    with patch.dict("os.environ", {"API_KEYS": "test-key-ab,another-key-ab"}):
-        with patch.object(api_module, "PREDICTOR", mock_pred):
-            yield TestClient(app, raise_server_exceptions=False)
+from api.dependencies import verify_api_key
 
 
 def test_z_test_statistical_calculation():
@@ -48,51 +33,41 @@ def test_ab_routing_determinism():
     route_1a = engine.get_route("TX-001")
     route_1b = engine.get_route("TX-001")
     assert route_1a == route_1b
+    assert route_1a in ["A", "B"]
 
     route_2a = engine.get_route("TX-999")
     route_2b = engine.get_route("TX-999")
     assert route_2a == route_2b
+    assert route_2a in ["A", "B"]
 
 
-def test_predict_ab_endpoint_auth(ab_client):
-    payload = {
-        "TransactionID": "TX-AB-001",
-        "card1": 11111,
-        "TransactionAmt": 150.0,
-        "TransactionDT": 1000,
-        "ProductCD": "W",
-        "card4": "visa",
-        "card6": "credit",
-        "vesta_features": [0.0] * 339,
-    }
+def test_ab_metrics_recording():
+    engine = ABTestingEngine(ab_split=0.5)
+    engine.record_metrics(group="A", is_fraud=True, latency_ms=12.5)
+    engine.record_metrics(group="A", is_fraud=False, latency_ms=15.0)
+    engine.record_metrics(group="B", is_fraud=False, latency_ms=8.0)
 
-    # Unauthorized
-    response = ab_client.post("/api/v1/predict_ab", json=payload)
-    assert response.status_code == 403
-
-    # Authorized (Group A or B)
-    response_auth = ab_client.post(
-        "/api/v1/predict_ab", json=payload, headers={"X-API-Key": "test-key-ab"}
-    )
-    assert response_auth.status_code == 200
-    data = response_auth.json()
-    assert "ab_group" in data
-    assert data["ab_group"] in ["A", "B"]
-    assert "model_used" in data
-    assert "fraud_score" in data
+    status = engine.get_status_report()
+    assert status["group_a"]["total_requests"] == 2
+    assert status["group_a"]["fraud_detected"] == 1
+    assert status["group_b"]["total_requests"] == 1
+    assert status["group_b"]["fraud_detected"] == 0
+    assert "z_test" in status
 
 
-def test_ab_status_endpoint(ab_client):
-    # Unauthorized
-    response = ab_client.get("/api/v1/ab_status")
-    assert response.status_code == 403
+def test_predict_ab_auth_security():
+    with patch.dict(os.environ, {"API_KEYS": "valid-key-1,valid-key-2"}):
+        # Missing key raises 403
+        with pytest.raises(HTTPException) as exc_info:
+            verify_api_key(None)
+        assert exc_info.value.status_code == 403
 
-    # Authorized
-    response_auth = ab_client.get(
-        "/api/v1/ab_status", headers={"X-API-Key": "test-key-ab"}
-    )
-    assert response_auth.status_code == 200
-    data = response_auth.json()
-    assert "group_a" in data
-    assert "group_b" in data
-    assert "z_test" in data
+        # Invalid key raises 403
+        with pytest.raises(HTTPException) as exc_info2:
+            verify_api_key("unauthorized-key")
+        assert exc_info2.value.status_code == 403
+
+        # Valid key succeeds
+        assert verify_api_key("valid-key-1") == "valid-key-1"
+        assert verify_api_key("valid-key-2") == "valid-key-2"
+

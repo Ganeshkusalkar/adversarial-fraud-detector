@@ -309,9 +309,11 @@ with tab3:
 # -----------------------------------------------------------------------
 # Simulation state
 # -----------------------------------------------------------------------
-API_URL = "http://localhost:8000/api/v1/predict"
-API_AB_URL = "http://localhost:8000/api/v1/predict_ab"
-API_STATUS_URL = "http://localhost:8000/api/v1/ab_status"
+import os
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000").rstrip("/")
+API_URL = f"{API_BASE_URL}/api/v1/predict"
+API_AB_URL = f"{API_BASE_URL}/api/v1/predict_ab"
+API_STATUS_URL = f"{API_BASE_URL}/api/v1/ab_status"
 
 stream_records = []
 total_fraud_caught = 0
@@ -1033,7 +1035,7 @@ else:
         if is_fraud:
             try:
                 shap_resp = requests.post(
-                    "http://localhost:8000/api/v1/explain",
+                    f"{API_BASE_URL}/api/v1/explain",
                     json=mock_payload,
                     timeout=1.0,
                 )

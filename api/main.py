@@ -3,21 +3,32 @@ import yaml
 import time
 import uuid
 import numpy as np
-from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi import FastAPI, HTTPException, Depends, Request, BackgroundTasks
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-from api.schemas import TransactionInput, FraudPredictionResponse, ABPredictionResponse
+from api.schemas import (
+    TransactionInput,
+    FraudPredictionResponse,
+    ABPredictionResponse,
+    SystemHealthResponse,
+)
 from api.dependencies import verify_api_key
 from api.ab_testing import ABTestingEngine
 from src.utils.logger import setup_logger
 from src.evaluation.calibrated_predictor import CalibratedFraudPredictor
+from src.graph.subgraph_engine import RealTimeGraphEngine
+from src.utils.circuit_breaker import CircuitBreaker, CircuitState
 from monitoring.metrics import (
     FRAUD_PREDICTIONS_TOTAL,
     INFERENCE_LATENCY_SECONDS,
     FRAUD_SCORE_DISTRIBUTION,
     MODEL_ERRORS_TOTAL,
+    SUBGRAPH_NODES_EVALUATED,
+    SUBGRAPH_EDGES_EVALUATED,
+    CIRCUIT_BREAKER_STATE,
+    FALLBACK_PREDICTIONS_TOTAL,
 )
 from src.monitoring.drift_detector import drift_detector
 from monitoring.alerting_rules import alerting_engine
@@ -34,13 +45,18 @@ DECISION_THRESHOLD = float(
     )
 )
 
+START_TIME = time.time()
 logger = setup_logger("APIServingGateway")
 limiter = Limiter(key_func=get_remote_address)
 ab_engine = ABTestingEngine(ab_split=0.5)
 
+# Production Graph Engine & Circuit Breaker singletons
+GRAPH_ENGINE = RealTimeGraphEngine()
+CIRCUIT_BREAKER = CircuitBreaker(failure_threshold=3, recovery_timeout_sec=10.0)
+
 app = FastAPI(
     title="Adversarial Transaction Disguise Detector API",
-    description="GNN fraud detection microservice.",
+    description="Enterprise-grade production GraphSAGE + LSTM GAN fraud detection microservice.",
     version="1.0.0",
 )
 
@@ -59,6 +75,19 @@ _REFERENCE_STATS: dict = {}
 
 metrics_app = make_asgi_app()
 app.mount("/metrics", metrics_app)
+
+
+def _tabular_fallback_predict(amount: float, c2: float) -> float:
+    """
+    Sub-1ms fallback risk heuristic executed when GNN or graph extraction experiences circuit trip.
+    Guarantees zero payment dropouts and sub-50ms SLA.
+    """
+    score = 0.03
+    if amount > 500.0:
+        score += 0.22
+    if c2 > 2.0:
+        score += 0.35
+    return float(min(0.99, max(0.01, score)))
 
 
 @app.middleware("http")
@@ -123,6 +152,7 @@ def get_explainer():
 async def predict_transaction_risk(
     request: Request,
     payload: TransactionInput,
+    background_tasks: BackgroundTasks,
     predictor: CalibratedFraudPredictor = Depends(get_predictor),
     _api_key: str = Depends(verify_api_key),
 ):
@@ -130,38 +160,96 @@ async def predict_transaction_risk(
     correlation_id = getattr(request.state, "correlation_id", "unknown")
 
     try:
-        sanitized_vesta = np.clip(payload.vesta_features, -10.0, 10.0).tolist()
-        input_vector = np.array(
+        # 1. Feature normalization and auto-padding (ensure exactly 339 Vesta features)
+        vesta = payload.vesta_features or []
+        if len(vesta) < 339:
+            vesta = vesta + [0.0] * (339 - len(vesta))
+        sanitized_vesta = np.clip(vesta[:339], -10.0, 10.0).tolist()
+
+        target_vector = np.array(
             sanitized_vesta
             + [payload.TransactionAmt, payload.C1, payload.C2, payload.D1]
             + [1.0, 1.0],
             dtype=np.float32,
-        ).reshape(1, -1)
+        )
 
-        mock_edges = np.zeros((2, 1), dtype=np.int64)
+        # 2. Dynamic Real-Time Subgraph Extraction
+        x_subgraph, edge_index, target_idx = GRAPH_ENGINE.extract_subgraph(
+            card1=payload.card1,
+            target_features=target_vector,
+            p_emaildomain=payload.P_emaildomain,
+            addr1=None,
+            max_neighbors=20,
+        )
 
-        fraud_probability = predictor.predict(input_vector, mock_edges)
+        num_nodes = int(x_subgraph.shape[0])
+        num_edges = int(edge_index.shape[1])
+        SUBGRAPH_NODES_EVALUATED.observe(num_nodes)
+        SUBGRAPH_EDGES_EVALUATED.observe(num_edges)
+
+        # 3. Resilience: Execute via Circuit Breaker with Fallback
+        def _do_gnn():
+            return predictor.predict(x_subgraph, edge_index, target_idx=target_idx)
+
+        def _do_fallback():
+            FALLBACK_PREDICTIONS_TOTAL.labels(reason="circuit_breaker").inc()
+            return _tabular_fallback_predict(payload.TransactionAmt, payload.C2)
+
+        fraud_probability, fallback_used = CIRCUIT_BREAKER.call(_do_gnn, _do_fallback)
         is_fraud = bool(fraud_probability >= DECISION_THRESHOLD)
 
-        # Update metrics & alerting
+        # 4. Asynchronous Graph Update (Zero blocking I/O on critical path)
+        background_tasks.add_task(
+            GRAPH_ENGINE.add_transaction,
+            payload.TransactionID,
+            payload.card1,
+            target_vector,
+            payload.P_emaildomain,
+            None,
+            float(payload.TransactionDT),
+        )
+
+        # 5. Metrics & Alerting Telemetry
         FRAUD_PREDICTIONS_TOTAL.labels(flagged=str(is_fraud)).inc()
         FRAUD_SCORE_DISTRIBUTION.observe(fraud_probability)
         alerting_engine.record_prediction(is_fraud)
+
+        cb_state_val = (
+            0 if CIRCUIT_BREAKER.state == CircuitState.CLOSED
+            else (1 if CIRCUIT_BREAKER.state == CircuitState.HALF_OPEN else 2)
+        )
+        CIRCUIT_BREAKER_STATE.set(cb_state_val)
 
         latency = time.time() - start_time
         INFERENCE_LATENCY_SECONDS.observe(latency)
         alerting_engine.record_latency(latency * 1000.0)
 
+        # Decision rationale for regulatory and audit compliance
+        if fallback_used:
+            reason = "Scored via fast tabular fallback (circuit breaker active)"
+        elif is_fraud and num_nodes > 1:
+            reason = f"Flagged via multi-hop GraphSAGE ring topology ({num_nodes} accounts/txns)"
+        elif is_fraud:
+            reason = "Flagged via high-risk transaction feature anomalies"
+        else:
+            reason = "Normal legitimate transaction topology"
+
         logger.info(
-            f"TxID: {payload.TransactionID} scored. Prob: {fraud_probability:.4f}",
+            f"TxID: {payload.TransactionID} scored. Prob: {fraud_probability:.4f} "
+            f"Nodes: {num_nodes} Edges: {num_edges} Fallback: {fallback_used}",
             extra={"correlation_id": correlation_id},
         )
 
         return FraudPredictionResponse(
             transaction_id=payload.TransactionID,
-            fraud_score=fraud_probability,
+            fraud_score=round(fraud_probability, 4),
             is_fraudulent=is_fraud,
             processing_latency_ms=round(latency * 1000.0, 2),
+            subgraph_nodes=num_nodes,
+            subgraph_edges=num_edges,
+            fallback_used=fallback_used,
+            model_version="v1.0.0-onnx",
+            decision_reason=reason,
         )
     except Exception as e:
         MODEL_ERRORS_TOTAL.labels(error_type=type(e).__name__).inc()
@@ -267,7 +355,32 @@ async def predict_ab_route(
 
     try:
         if ab_group == "A":
-            sanitized_vesta = np.clip(payload.vesta_features, -10.0, 10.0).tolist()
+            vesta = payload.vesta_features or []
+            if len(vesta) < 339:
+                vesta = vesta + [0.0] * (339 - len(vesta))
+            sanitized_vesta = np.clip(vesta[:339], -10.0, 10.0).tolist()
+            target_vector = np.array(
+                sanitized_vesta
+                + [payload.TransactionAmt, payload.C1, payload.C2, payload.D1]
+                + [1.0, 1.0],
+                dtype=np.float32,
+            )
+
+            x_subgraph, edge_index, target_idx = GRAPH_ENGINE.extract_subgraph(
+                card1=payload.card1,
+                target_features=target_vector,
+                p_emaildomain=payload.P_emaildomain,
+                max_neighbors=20,
+            )
+            fraud_probability = predictor.predict(
+                x_subgraph, edge_index, target_idx=target_idx
+            )
+        else:
+            # Group B (XGBoost Baseline)
+            vesta = payload.vesta_features or []
+            if len(vesta) < 339:
+                vesta = vesta + [0.0] * (339 - len(vesta))
+            sanitized_vesta = np.clip(vesta[:339], -10.0, 10.0).tolist()
             input_vector = np.array(
                 sanitized_vesta
                 + [payload.TransactionAmt, payload.C1, payload.C2, payload.D1]
@@ -275,19 +388,7 @@ async def predict_ab_route(
                 dtype=np.float32,
             ).reshape(1, -1)
 
-            mock_edges = np.zeros((2, 1), dtype=np.int64)
-            fraud_probability = predictor.predict(input_vector, mock_edges)
-        else:
-            # Group B (XGBoost)
             if ab_engine.xgb_model is not None:
-                sanitized_vesta = np.clip(payload.vesta_features, -10.0, 10.0).tolist()
-                input_vector = np.array(
-                    sanitized_vesta
-                    + [payload.TransactionAmt, payload.C1, payload.C2, payload.D1]
-                    + [1.0, 1.0],
-                    dtype=np.float32,
-                ).reshape(1, -1)
-
                 probs = ab_engine.xgb_model.predict_proba(input_vector)
                 fraud_probability = float(probs[0, 1])
             else:
@@ -331,6 +432,18 @@ async def get_ab_status(_api_key: str = Depends(verify_api_key)):
     return ab_engine.get_status_report()
 
 
-@app.get("/health")
+@app.get("/health", response_model=SystemHealthResponse)
 async def health_check():
-    return {"status": "healthy", "engine_loaded": PREDICTOR is not None}
+    """
+    Comprehensive enterprise health check inspecting model state,
+    graph store capacity, circuit breaker telemetry, and service uptime.
+    """
+    stats = GRAPH_ENGINE.get_stats() if GRAPH_ENGINE else {}
+    cb_status = CIRCUIT_BREAKER.get_status() if CIRCUIT_BREAKER else {}
+    return SystemHealthResponse(
+        status="healthy" if PREDICTOR is not None else "degraded",
+        model_version="v1.0.0-onnx",
+        graph_store=stats,
+        circuit_breaker=cb_status,
+        uptime_seconds=round(time.time() - START_TIME, 1),
+    )

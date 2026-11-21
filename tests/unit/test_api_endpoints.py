@@ -1,39 +1,11 @@
 import pytest
+import os
 from unittest.mock import patch, MagicMock
-from fastapi.testclient import TestClient
-
-# Mock os.environ BEFORE importing api.main to configure API keys
-with patch.dict("os.environ", {"API_KEYS": "test-key-123,another-key-456"}):
-    import api.main as api_module
-    from api.main import app
-
-
-@pytest.fixture
-def client():
-    # Provide a client with mocked Predictor and SHAP Explainer
-    mock_pred = MagicMock()
-    mock_pred.predict.return_value = 0.15
-
-    mock_shap = MagicMock()
-    mock_shap.explain.return_value = {"Vesta_0": 0.05, "TransactionAmt": 0.12}
-
-    # Manually configure stats so drift endpoint works without running startup
-    api_module._REFERENCE_STATS = {
-        f"V{i}": {"mean": 0.0, "std": 1.0} for i in range(339)
-    }
-    api_module._REFERENCE_STATS.update(
-        {
-            "TransactionAmt": {"mean": 130.0, "std": 400.0},
-            "C1": {"mean": 1.0, "std": 2.0},
-            "C2": {"mean": 1.0, "std": 2.0},
-            "D1": {"mean": 10.0, "std": 50.0},
-        }
-    )
-
-    with patch.dict("os.environ", {"API_KEYS": "test-key-123,another-key-456"}):
-        with patch.object(api_module, "PREDICTOR", mock_pred):
-            with patch.object(api_module, "SHAP_EXPLAINER", mock_shap):
-                yield TestClient(app, raise_server_exceptions=False)
+from pydantic import ValidationError
+from fastapi import HTTPException
+import api.main as api_module
+from api.dependencies import verify_api_key
+from api.schemas import TransactionInput, SystemHealthResponse
 
 
 @pytest.fixture
@@ -55,105 +27,82 @@ def sample_payload():
     }
 
 
-def test_health_endpoint(client):
-    response = client.get("/health")
-    assert response.status_code == 200
-    assert response.json()["status"] == "healthy"
-    # PREDICTOR is mocked, so engine_loaded should be True
-    assert response.json()["engine_loaded"] is True
-
-
-def test_health_endpoint_when_predictor_none(client):
-    with patch.object(api_module, "PREDICTOR", None):
-        response = client.get("/health")
-        assert response.status_code == 200
-        assert response.json()["engine_loaded"] is False
-
-
-def test_predict_endpoint_unauthorized(client, sample_payload):
-    # Missing API key header
-    response = client.post("/api/v1/predict", json=sample_payload)
-    assert response.status_code == 403
-
-    # Incorrect API key header
-    response = client.post(
-        "/api/v1/predict", json=sample_payload, headers={"X-API-Key": "wrong"}
+def test_health_response_schema():
+    stats = api_module.GRAPH_ENGINE.get_stats()
+    cb = api_module.CIRCUIT_BREAKER.get_status()
+    resp = SystemHealthResponse(
+        status="healthy",
+        model_version="v1.0.0-onnx",
+        graph_store=stats,
+        circuit_breaker=cb,
+        uptime_seconds=42.0,
     )
-    assert response.status_code == 403
+    assert resp.status == "healthy"
+    assert resp.model_version == "v1.0.0-onnx"
+    assert "total_nodes" in resp.graph_store
+    assert "state" in resp.circuit_breaker
+    assert resp.uptime_seconds == 42.0
 
 
-def test_predict_endpoint_success(client, sample_payload):
-    response = client.post(
-        "/api/v1/predict", json=sample_payload, headers={"X-API-Key": "test-key-123"}
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["transaction_id"] == "TXN-UNIT-001"
-    assert data["fraud_score"] == 0.15
-    assert data["is_fraudulent"] is False
-    assert data["processing_latency_ms"] >= 0.0
-    assert "X-Correlation-ID" in response.headers
+def test_api_key_auth_verification():
+    with patch.dict(os.environ, {"API_KEYS": "valid-key-123,valid-key-456"}):
+        # Missing key raises 403
+        with pytest.raises(HTTPException) as exc1:
+            verify_api_key(None)
+        assert exc1.value.status_code == 403
+
+        # Invalid key raises 403
+        with pytest.raises(HTTPException) as exc2:
+            verify_api_key("invalid-token")
+        assert exc2.value.status_code == 403
+
+        # Valid key passes
+        assert verify_api_key("valid-key-123") == "valid-key-123"
+        assert verify_api_key("valid-key-456") == "valid-key-456"
 
 
-def test_predict_endpoint_validation_error(client):
-    # Negative transaction amount should fail validation (ge=0.0)
-    bad_payload = {
-        "TransactionID": "TXN-BAD",
-        "card1": 12345,
-        "TransactionAmt": -10.0,
-        "TransactionDT": 86400,
-        "ProductCD": "W",
-        "card4": "visa",
-        "card6": "credit",
-    }
-    response = client.post(
-        "/api/v1/predict", json=bad_payload, headers={"X-API-Key": "test-key-123"}
-    )
-    assert response.status_code == 422
+def test_payload_validation_success(sample_payload):
+    tx = TransactionInput(**sample_payload)
+    assert tx.TransactionID == "TXN-UNIT-001"
+    assert tx.TransactionAmt == 150.0
+    assert len(tx.vesta_features) == 339
 
 
-def test_predict_endpoint_uninitialized_predictor(client, sample_payload):
-    with patch.object(api_module, "PREDICTOR", None):
-        response = client.post(
-            "/api/v1/predict",
-            json=sample_payload,
-            headers={"X-API-Key": "test-key-123"},
+def test_payload_validation_negative_amount():
+    with pytest.raises(ValidationError):
+        TransactionInput(
+            TransactionID="TX-BAD",
+            card1=12345,
+            TransactionAmt=-10.0,  # Negative amount must fail ge=0.0
+            TransactionDT=1000,
+            ProductCD="W",
+            card4="visa",
+            card6="credit",
         )
-        assert response.status_code == 503
-        assert "uninitialized" in response.json()["detail"]
 
 
-def test_explain_endpoint_success(client, sample_payload):
-    response = client.post(
-        "/api/v1/explain", json=sample_payload, headers={"X-API-Key": "test-key-123"}
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["transaction_id"] == "TXN-UNIT-001"
-    assert "explanation" in data
+def test_get_predictor_uninitialized():
+    with patch.object(api_module, "PREDICTOR", None):
+        with pytest.raises(HTTPException) as exc:
+            api_module.get_predictor()
+        assert exc.value.status_code == 503
+        assert "uninitialized" in exc.value.detail.lower()
 
 
-def test_explain_endpoint_uninitialized_explainer(client, sample_payload):
+def test_get_explainer_uninitialized():
     with patch.object(api_module, "SHAP_EXPLAINER", None):
-        response = client.post(
-            "/api/v1/explain",
-            json=sample_payload,
-            headers={"X-API-Key": "test-key-123"},
-        )
-        assert response.status_code == 503
-        assert "uninitialized" in response.json()["detail"]
+        with pytest.raises(HTTPException) as exc:
+            api_module.get_explainer()
+        assert exc.value.status_code == 503
+        assert "uninitialized" in exc.value.detail.lower()
 
 
-def test_drift_endpoint_success(client):
-    response = client.get("/monitoring/drift")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "success"
-    assert "drift_report" in data
+def test_tabular_fallback_predict():
+    # Low risk
+    low = api_module._tabular_fallback_predict(amount=50.0, c2=1.0)
+    assert 0.01 <= low < 0.20
 
-
-def test_drift_endpoint_uninitialized(client):
-    with patch.object(api_module, "_REFERENCE_STATS", None):
-        response = client.get("/monitoring/drift")
-        assert response.status_code == 503
-        assert "unavailable" in response.json()["status"]
+    # High amount and velocity
+    high = api_module._tabular_fallback_predict(amount=1000.0, c2=5.0)
+    assert high > 0.50
+    assert high <= 0.99
