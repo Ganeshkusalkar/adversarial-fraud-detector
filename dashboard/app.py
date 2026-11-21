@@ -361,61 +361,66 @@ with tab_gateway:
 
     st.markdown("---")
 
-    # Ingestion Form
-    f_col1, f_col2, f_col3 = st.columns([1.8, 1.8, 2.4])
+    ingestion_mode = st.radio(
+        "Choose Ingestion Mode:",
+        ["🎛️ Form Mode (Enter or Edit Fields)", "📋 Paste Raw JSON Payload (Direct API Tester)"],
+        horizontal=True,
+    )
 
-    with f_col1:
-        st.markdown('<div class="section-header">📱 Payment Rail & Parties</div>', unsafe_allow_html=True)
-        payment_rail = st.selectbox(
-            "Payment Rail",
-            [
-                "UPI (Google Pay / PhonePe)",
-                "Credit / Debit Card (Visa/RuPay)",
-                "NetBanking / IMPS Transfer",
-                "Digital Wallet (Paytm/Amazon)",
-            ],
-            index=0 if "UPI" in preset_rail else 1,
-        )
-        sender_id = st.text_input("Sender VPA / Card Token", value=preset_sender)
-        receiver_id = st.text_input("Receiver VPA / Merchant ID", value=preset_receiver)
-        transaction_amount = st.number_input(
-            "Transaction Amount (₹)", value=float(preset_amt), step=500.0, min_value=1.0
-        )
+    if ingestion_mode == "🎛️ Form Mode (Enter or Edit Fields)":
+        # Ingestion Form
+        f_col1, f_col2, f_col3 = st.columns([1.8, 1.8, 2.4])
 
-    with f_col2:
-        st.markdown('<div class="section-header">🛡️ Network & Behavioral Telemetry</div>', unsafe_allow_html=True)
-        device_id = st.text_input("Device Hardware Fingerprint", value=preset_device)
-        hourly_velocity = st.slider(
-            "Velocity (Transactions from this Entity in 1 Hr)",
-            min_value=0.0,
-            max_value=15.0,
-            value=float(preset_velocity),
-            step=0.5,
-        )
-        email_domain = st.selectbox(
-            "Associated Email Gateway",
-            ["gmail.com", "yahoo.com", "outlook.com", "disposable-mail.xyz", "tempmail.org"],
-            index=3 if "mule" in sender_id or "disguised" in sender_id else 0,
-        )
-        ip_country = st.selectbox("Geo-Location Origin", ["IN (Domestic)", "US (International)", "RU (Proxy)", "NG (Flagged VPN)"])
+        with f_col1:
+            st.markdown('<div class="section-header">📱 Payment Rail & Parties</div>', unsafe_allow_html=True)
+            payment_rail = st.selectbox(
+                "Payment Rail",
+                [
+                    "UPI (Google Pay / PhonePe)",
+                    "Credit / Debit Card (Visa/RuPay)",
+                    "NetBanking / IMPS Transfer",
+                    "Digital Wallet (Paytm/Amazon)",
+                ],
+                index=0 if "UPI" in preset_rail else 1,
+            )
+            sender_id = st.text_input("Sender VPA / Card Token", value=preset_sender)
+            receiver_id = st.text_input("Receiver VPA / Merchant ID", value=preset_receiver)
+            transaction_amount = st.number_input(
+                "Transaction Amount (₹)", value=float(preset_amt), step=500.0, min_value=1.0
+            )
 
-    with f_col3:
-        st.markdown('<div class="section-header">⚡ Live Interception Action</div>', unsafe_allow_html=True)
-        st.markdown(
-            f"""
-            <div style="background:#0f172a; border:1px solid #1e293b; border-radius:8px; padding:12px; margin-bottom:12px; font-size:0.82rem; color:#94a3b8;">
-                <b>Target Gateway:</b> {payment_rail}<br>
-                <b>Ingestion Hash:</b> <code>{hashlib.sha256((sender_id + device_id).encode()).hexdigest()[:16]}</code><br>
-                <b>Endpoint:</b> <code>POST /api/v1/predict</code>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        with f_col2:
+            st.markdown('<div class="section-header">🛡️ Network & Behavioral Telemetry</div>', unsafe_allow_html=True)
+            device_id = st.text_input("Device Hardware Fingerprint", value=preset_device)
+            hourly_velocity = st.slider(
+                "Velocity (Transactions from this Entity in 1 Hr)",
+                min_value=0.0,
+                max_value=15.0,
+                value=float(preset_velocity),
+                step=0.5,
+            )
+            email_domain = st.selectbox(
+                "Associated Email Gateway",
+                ["gmail.com", "yahoo.com", "outlook.com", "disposable-mail.xyz", "tempmail.org"],
+                index=3 if "mule" in sender_id or "disguised" in sender_id else 0,
+            )
+            ip_country = st.selectbox("Geo-Location Origin", ["IN (Domestic)", "US (International)", "RU (Proxy)", "NG (Flagged VPN)"])
 
-        intercept_clicked = st.button("⚡ Process & Intercept Transaction", use_container_width=True, type="primary")
+        with f_col3:
+            st.markdown('<div class="section-header">⚡ Live Interception Action</div>', unsafe_allow_html=True)
+            st.markdown(
+                f"""
+                <div style="background:#0f172a; border:1px solid #1e293b; border-radius:8px; padding:12px; margin-bottom:12px; font-size:0.82rem; color:#94a3b8;">
+                    <b>Target Gateway:</b> {payment_rail}<br>
+                    <b>Ingestion Hash:</b> <code>{hashlib.sha256((sender_id + device_id).encode()).hexdigest()[:16]}</code><br>
+                    <b>Endpoint:</b> <code>POST /api/v1/predict</code>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
-    # Transaction Execution
-    if intercept_clicked:
+            intercept_clicked = st.button("⚡ Process & Intercept Transaction", use_container_width=True, type="primary")
+
         # Generate canonical Card/Account hash
         card1_hash = int(hashlib.md5(sender_id.encode("utf-8")).hexdigest(), 16) % 90000 + 10000
         tx_id = f"TX-GATEWAY-{int(time.time() * 1000) % 100000}"
@@ -438,6 +443,92 @@ with tab_gateway:
 
         # Inject known syndicate connections if attack scenario
         if "CAROUSEL" in device_id or "mule" in sender_id or hourly_velocity > 4.0:
+            payload["C2"] = max(hourly_velocity, 4.0)
+            payload["card1"] = 14204  # Connected to known card cluster in production ONNX reference graph
+
+    else:
+        # Raw JSON Paste Mode
+        st.markdown(
+            """
+            <div style="color:#94a3b8; font-size:0.85rem; margin-bottom:8px;">
+                Paste any raw transaction JSON below from your payment gateway (Razorpay, Stripe, or Postman) 
+                and send it directly to the live cloud API.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        p_col1, p_col2 = st.columns([2.5, 1.2])
+
+        default_pasted_payload = {
+            "TransactionID": f"TX-PASTED-{int(time.time()) % 100000}",
+            "card1": 14204,
+            "TransactionAmt": 49999.0,
+            "TransactionDT": int(time.time()),
+            "ProductCD": "W",
+            "card4": "rupay",
+            "card6": "debit",
+            "P_emaildomain": "disposable-domains.xyz",
+            "R_emaildomain": "gmail.com",
+            "C1": 1.0,
+            "C2": 5.0,
+            "D1": 0.0,
+            "sender_vpa": "syndicate_mule@ybl",
+            "receiver_vpa": "crypto_cashout@paytm",
+            "device_fingerprint": "DEV-PASTED-881",
+        }
+
+        with p_col1:
+            raw_json_input = st.text_area(
+                "Paste Transaction JSON:",
+                value=json.dumps(default_pasted_payload, indent=2),
+                height=260,
+                help="You can edit or paste your own JSON payload here.",
+            )
+
+        with p_col2:
+            st.markdown('<div class="section-header">⚡ Dispatch Pasted JSON</div>', unsafe_allow_html=True)
+            st.markdown(
+                f"""
+                <div style="background:#0f172a; border:1px solid #1e293b; border-radius:8px; padding:12px; margin-bottom:14px; font-size:0.82rem; color:#94a3b8;">
+                    <b>Destination:</b> Render Cloud API<br>
+                    <b>Target:</b> <code>POST /api/v1/predict</code><br>
+                    <b>Auth:</b> <code>X-API-Key active</code>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            intercept_clicked = st.button("⚡ Dispatch Pasted JSON to API", use_container_width=True, type="primary")
+
+        # Parse pasted JSON
+        try:
+            parsed_data = json.loads(raw_json_input)
+            tx_id = str(parsed_data.get("TransactionID", f"TX-PASTED-{int(time.time()) % 100000}"))
+            transaction_amount = float(parsed_data.get("TransactionAmt", 49999.0))
+            sender_id = str(parsed_data.get("sender_vpa", parsed_data.get("card1", "user@upi")))
+            receiver_id = str(parsed_data.get("receiver_vpa", "merchant@upi"))
+            device_id = str(parsed_data.get("device_fingerprint", "DEV-UNKNOWN"))
+            payment_rail = "UPI (Pasted JSON)" if "vpa" in str(parsed_data).lower() else "Card / Other"
+            ip_country = "IN (Domestic)"
+
+            payload = {
+                "TransactionID": tx_id,
+                "card1": int(parsed_data.get("card1", 14204)),
+                "TransactionAmt": transaction_amount,
+                "TransactionDT": int(parsed_data.get("TransactionDT", int(time.time()))),
+                "ProductCD": str(parsed_data.get("ProductCD", "W")),
+                "card4": str(parsed_data.get("card4", "rupay")),
+                "card6": str(parsed_data.get("card6", "debit")),
+                "P_emaildomain": str(parsed_data.get("P_emaildomain", "gmail.com")),
+                "R_emaildomain": str(parsed_data.get("R_emaildomain", "gmail.com")),
+                "C1": float(parsed_data.get("C1", 1.0)),
+                "C2": float(parsed_data.get("C2", 1.0)),
+                "D1": float(parsed_data.get("D1", 0.0)),
+                "vesta_features": parsed_data.get("vesta_features", [0.0] * 339),
+            }
+        except Exception as json_err:
+            st.error(f"Invalid JSON format: {str(json_err)}")
+            intercept_clicked = False
             payload["C2"] = max(hourly_velocity, 4.0)
             payload["card1"] = 14204  # Connected to known card cluster in production ONNX reference graph
 
@@ -777,8 +868,12 @@ with tab_integration:
 
     st.markdown(
         """
-        Integrate the Adversarial Fraud Shield with **Razorpay UPI**, **Stripe**, **Paytm Payment Gateway**, 
-        or any custom microservice. The API returns real-time risk scores with sub-20ms SLA.
+        Integrate FraudShield AI directly into **Razorpay UPI**, **Stripe**, **Paytm Payment Gateway**, 
+        or any custom microservice. 
+        
+        > **💡 What is this copyable code?**  
+        > These code blocks are **read-only SDK templates**. You copy them into your payment backend (Node.js, Python, or curl) so your website automatically routes transactions through this AI.
+        > To **PASTE and TEST** custom JSON live right now, use the **[⚡ Multi-Rail Interceptor]** tab above and select **📋 Paste Raw JSON Payload**!
         """
     )
 
