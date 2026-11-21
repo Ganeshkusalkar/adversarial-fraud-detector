@@ -2,7 +2,17 @@
 Graph manipulation and ingestion layer.
 """
 
-from .graph_builder import TransactionGraphBuilder
-from .neo4j_client import Neo4jClient
+from .subgraph_engine import RealTimeGraphEngine
 
-__all__ = ["TransactionGraphBuilder", "Neo4jClient"]
+try:
+    from .graph_builder import TransactionGraphBuilder
+except (ImportError, ModuleNotFoundError):
+    TransactionGraphBuilder = None
+
+try:
+    from .neo4j_client import Neo4jClient
+except (ImportError, ModuleNotFoundError):
+    Neo4jClient = None
+
+__all__ = ["RealTimeGraphEngine", "TransactionGraphBuilder", "Neo4jClient"]
+
