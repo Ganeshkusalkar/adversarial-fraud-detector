@@ -12,8 +12,12 @@ from sklearn.metrics import (
     recall_score,
     f1_score,
 )
-from src.pipelines.ieee_pipeline import IEEECISPipeline
-from src.graph.graph_builder import TransactionGraphBuilder
+try:
+    from src.pipelines.ieee_pipeline import IEEECISPipeline
+    from src.graph.graph_builder import TransactionGraphBuilder
+except (ImportError, ModuleNotFoundError):
+    IEEECISPipeline = None
+    TransactionGraphBuilder = None
 
 from sklearn.base import BaseEstimator, ClassifierMixin
 

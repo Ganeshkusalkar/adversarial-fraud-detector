@@ -1,6 +1,45 @@
-import onnxruntime as ort
+import sys
 import pickle
 import numpy as np
+import onnxruntime as ort
+from sklearn.linear_model import LogisticRegression
+from sklearn.isotonic import IsotonicRegression
+
+
+class PlattCalibrator:
+    """Platt scaling probability calibrator."""
+
+    def __init__(self):
+        self.lr = LogisticRegression(class_weight="balanced")
+
+    def fit(self, X, y):
+        self.lr.fit(X.reshape(-1, 1), y)
+        return self
+
+    def predict_proba(self, X):
+        return self.lr.predict_proba(X.reshape(-1, 1))
+
+
+class IsoCalibrator:
+    """Isotonic regression probability calibrator."""
+
+    def __init__(self):
+        self.iso = IsotonicRegression(y_min=0, y_max=1, out_of_bounds="clip")
+
+    def fit(self, X, y):
+        self.iso.fit(X.reshape(-1), y)
+        return self
+
+    def predict_proba(self, X):
+        probs = self.iso.predict(X.reshape(-1))
+        return np.column_stack((1 - probs, probs))
+
+
+# Register classes in __main__ at import time so unpickling always finds them
+for mod_name in ["__main__", "src.evaluation.calibrate_probabilities"]:
+    if mod_name in sys.modules:
+        setattr(sys.modules[mod_name], "PlattCalibrator", PlattCalibrator)
+        setattr(sys.modules[mod_name], "IsoCalibrator", IsoCalibrator)
 
 
 class CalibratedFraudPredictor:
@@ -32,17 +71,11 @@ class CalibratedFraudPredictor:
         with open(self.scaler_path, "rb") as f:
             self.scaler = pickle.load(f)
 
-        # Patch __main__ for unpickling the calibrator
-        import sys
-        from src.evaluation.calibrate_probabilities import (
-            PlattCalibrator,
-            IsoCalibrator,
-        )
-
-        if not hasattr(sys.modules["__main__"], "PlattCalibrator"):
-            setattr(sys.modules["__main__"], "PlattCalibrator", PlattCalibrator)
-        if not hasattr(sys.modules["__main__"], "IsoCalibrator"):
-            setattr(sys.modules["__main__"], "IsoCalibrator", IsoCalibrator)
+        # Patch __main__ and calibrate_probabilities before unpickling
+        main_mod = sys.modules.get("__main__")
+        if main_mod:
+            setattr(main_mod, "PlattCalibrator", PlattCalibrator)
+            setattr(main_mod, "IsoCalibrator", IsoCalibrator)
 
         # Load Calibrator
         with open(self.calibrator_path, "rb") as f:

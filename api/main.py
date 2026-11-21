@@ -77,6 +77,19 @@ metrics_app = make_asgi_app()
 app.mount("/metrics", metrics_app)
 
 
+@app.get("/")
+def root_entrypoint():
+    """Root entrypoint providing service status and documentation links."""
+    return {
+        "service": "Adversarial Transaction Disguise Detector API",
+        "status": "online",
+        "version": "1.0.0",
+        "documentation": "/docs",
+        "health_check": "/health",
+        "metrics": "/metrics",
+    }
+
+
 def _tabular_fallback_predict(amount: float, c2: float) -> float:
     """
     Sub-1ms fallback risk heuristic executed when GNN or graph extraction experiences circuit trip.
